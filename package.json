@@ -4,7 +4,7 @@
   "scripts": {
     "dev": "npm --prefix viewer run dev",
     "build": "npm --prefix viewer run build",
-    "test": "npm --prefix viewer run test",
+    "test": "npm --prefix viewer test --",
     "preview": "npm --prefix viewer run preview"
   }
 }

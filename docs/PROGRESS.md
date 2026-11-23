@@ -57,6 +57,9 @@ R7. After every stage update docs/PROGRESS.md and docs/STATE.md. UI stays
 | **Stage G: Final Check & Report** | Completed | 2026-10-26 19:35 | 2026-10-26 19:36 | Vite production build PASSED (4.66s); Vitest 27/27 tests PASSED; powercfg restored to 30 min |
 | **Stage H: Viewer Refinements** | Completed | 2026-10-27 00:12 | 2026-10-27 00:15 | Key U explore mode (HUD label 'unreconstructed area'); Spark Low/Med/High quality presets (maxStdDev 2.0/2.45/2.828); Vitest 35/35 PASSED; Vite build PASSED (4.24s); dev server scheduled on port 5173 |
 | **Phase 9: Cloudflare Deployment (Pages Only)** | Completed | 2026-10-29 21:53 | 2026-10-29 22:15 | R2 skipped on purpose (hosting all assets on Pages); project 'namma-ml-viewer' deployed to https://namma-ml-viewer.pages.dev/; all files under 25 MiB (spz 8.64 MB); Cache-Control headers verified; docs/deploy/README_DEPLOY.md written |
+| **Round 2 Phase 0: Branch, Baseline & Recon** | Completed | 2026-11-22 19:55 | 2026-11-22 20:06 | Branch round2-poi-navigation created; tag round1-submission set; Vitest 35/35 PASSED (577ms); Vite build PASSED (1.31s); Baseline F3 telemetry recorded (144 FPS, 6.9ms, 439k splats); docs/ROUND2_PLAN.md authored |
+| **Round 2 Phase 1: Navigation Core (Pure TypeScript)** | Completed | 2026-11-22 20:30 | 2026-11-22 22:00 | Pure TS modules (navgrid, pathfinder, distanceField) in viewer/src/nav/; 14 Vitest tests in nav.test.ts (49/49 passed in 1.10s); 3 narrow corridors verified walkable with 0 collisions; nav_demo.ts compares penalty on/off with 5cm clearance sampling |
+| **Round 2 Phase 2: POI Data Model, Spatial Index & Search** | Completed | 2026-11-22 22:15 | 2026-11-22 22:52 | Pure TS modules (poi_types, loader, spatial_index, search) in viewer/src/poi/; 26 Vitest tests in poi.test.ts (75/75 passed in 1.81s); poi.json created with 3 POIs (8.39m max walking dist); validate_pois.ts verified all reachability |
 
 ---
 

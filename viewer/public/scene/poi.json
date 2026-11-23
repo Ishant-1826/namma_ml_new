@@ -1,0 +1,54 @@
+{
+  "scene": "home",
+  "version": 1,
+  "pois": [
+    {
+      "id": "poi_work_desk",
+      "name": "Main Work Desk",
+      "category": "desk",
+      "aliases": ["workstation", "office desk", "pc setup"],
+      "tags": ["work", "computer", "table"],
+      "position": { "x": -2.65, "z": -2.85 },
+      "height": 0.75,
+      "zone": {
+        "type": "rect",
+        "width": 1.2,
+        "depth": 0.8,
+        "yaw": 0.0
+      },
+      "description": "Primary workspace desk in the study area."
+    },
+    {
+      "id": "poi_living_sofa",
+      "name": "Living Room Sofa",
+      "category": "sofa",
+      "aliases": ["couch", "lounge seating", "settee"],
+      "tags": ["living room", "furniture", "seating"],
+      "position": { "x": -1.55, "z": 3.15 },
+      "height": 0.85,
+      "zone": {
+        "type": "rect",
+        "width": 1.8,
+        "depth": 0.9,
+        "yaw": 0.0
+      },
+      "description": "Comfortable seating area in the living lounge."
+    },
+    {
+      "id": "poi_study_desk",
+      "name": "Study Desk",
+      "category": "desk",
+      "aliases": ["writing desk", "side desk", "reading table"],
+      "tags": ["study", "table", "reading"],
+      "position": { "x": 1.85, "z": -2.35 },
+      "height": 0.75,
+      "zone": {
+        "type": "rect",
+        "width": 1.0,
+        "depth": 0.6,
+        "yaw": 0.0
+      },
+      "description": "Secondary study and reading desk."
+    }
+  ]
+}

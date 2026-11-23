@@ -657,7 +657,68 @@ cd viewer && npm run dev
     - `npm run build` compiled cleanly in 4.24s.
     - Vitest test suite: all 35 tests PASSED (20 collision + 15 controls).
     - Dev server running on port 5173: `http://127.0.0.1:5173/`.
-- [ ] **Phase 9: Deployment** -- Production static hosting and CDN bundle optimization.
+- [x] **Phase 9: Deployment** -- Cloudflare Pages deployment completed at `https://namma-ml-viewer.pages.dev/`.
+- [x] **Round 2: POI Navigation & Interactive Desktop Viewer** -- IN PROGRESS:
+  - **Phase 0: Branch, Baseline & Recon** -- COMPLETE (2026-11-22):
+    - Working tree verified clean; commit `72f0009` tagged `round1-submission`.
+    - Switched to active feature branch `round2-poi-navigation`.
+    - Baseline tests: Vitest 35/35 passed in 577 ms (20 collision tests + 15 controls tests).
+    - Baseline build: `npm run build` compiled cleanly in 1.31 s (JS 3,221.92 kB / gzip 1,077.44 kB, CSS 10.86 kB / gzip 2.66 kB, HTML 7.69 kB / gzip 1.70 kB).
+    - Baseline F3 telemetry recorded in running viewer:
+      - FPS: **144 FPS**
+      - Frame time: **6.9 ms**
+      - Splat count: **439,824 / 439,824**
+      - Splat asset: `scene.v1.spz` (load time: 720 ms)
+      - Camera position: $X=1.77$, $Y=1.45$, $Z=3.52$
+      - Yaw: $-2.4^\circ$ (North = $-Z$)
+      - Quality: Med (0.75x)
+      - Collision: ON ($r = 0.08$ m)
+      - Walkable limit: ON
+      - Screenshot archived to `docs/baseline_f3.png`.
+    - Architecture plan authored in `docs/ROUND2_PLAN.md`:
+      - Full occupancy schema documented ($99 \times 120$ cells, $0.1$ m resolution, origin $[-5.9, -4.7]$).
+      - Verified meaning of every cell state: 0 unknown ($2,688$ cells, $22.63\%$), 1 free ($2,270$ cells, $19.11\%$), 2 raw occupied ($3,536$ cells, $29.76\%$), 3 inflated buffer ($3,386$ cells, $28.50\%$).
+      - Walkable flood fill reaches 2,195 / 2,195 cells ($100.00\%$, $21.95\text{ m}^2$ floor area).
+      - Mapped world-to-cell and cell-to-world conversion formulas and spawn cell $(76, 82)$.
+      - Documented `main.ts` integration and modular boundaries for pure navigation (`viewer/src/nav/`), pure POI registry (`viewer/src/poi/`), and DOM UI (`viewer/src/ui/`).
+  - **Phase 1: Navigation Core (Pure TypeScript)** -- COMPLETE (2026-11-22):
+    - Framework-free navigation core implemented in `viewer/src/nav/` with zero Three.js / DOM imports:
+      - `navgrid.ts`: Builds 2D navigable grid from occupancy data; preserves 2,195 flood-filled walkable cells; exact 2D Euclidean Distance Transform clearance precomputation (max clearance $0.85$ m); world $\leftrightarrow$ cell coordinate conversion; `snapToWalkable(x, z, maxDistM=1.5)`.
+      - `pathfinder.ts`: Optimal A* pathfinder on 8-connected moves with octile heuristic, strict diagonal corner-cutting prevention, soft clearance penalty for wall avoidance, and line-of-sight shortcutting (string pulling) verified at $0.05$ m sample intervals via `collision.ts` circle test ($r = 0.08$ m). Returns `{ points, lengthM, computeMs, expandedNodes }` or `{ error }`.
+      - `distanceField.ts`: Computes shortest-path walking distance field from start to all reachable walkable cells using 8-connected Dijkstra min-heap.
+      - `index.ts`: Unified module exports.
+    - Vitest unit test suite authored in `viewer/test/nav.test.ts` (14 tests):
+      - 6 synthetic map tests: open room straight-line shortcut, wall with $0.8$ m door (no wall tunneling), U-shaped concave trap, unreachable goal, blocked start auto-snap, narrow aisle.
+      - Real map tests on `occupancy.json`: spawn cell $(76, 82)$ verified walkable, `snapToWalkable` returns null for points outside grid, exact walkable count matches $2,195$ and max clearance $0.85$ m.
+      - 200 random walkable pairs test: **0 collision samples** across all sampled path segments, length $\ge$ straight-line distance, length $\le 1.10\times$ Dijkstra grid optimum.
+      - 3 narrow corridor routing tests from `docs/ROUND2_PLAN.md`: $[2.95, 4.95]$, $[1.75, -0.25]$, $[-1.25, -0.25]$ each confirmed walkable with collision-free paths ($0$ collision samples at $5\text{ cm}$) routing across both sides.
+    - Test execution: **49 / 49 tests PASSED** in $1.10$ s (20 collision + 15 controls + 14 nav).
+    - Production build: `npm --prefix viewer run build` PASSED (1.41 s, zero TS errors).
+    - Standalone demo script `scripts/nav_demo.ts` executed:
+      - Routes across full apartment from spawn $(1.771, 3.523)$ to furthest reachable corner $(-3.250, -3.050)$.
+      - Path metrics: length $10.259$ m, compute time $3.64$ ms, 1,107 expanded nodes, 6 smoothed waypoints (straight-line $8.271$ m, ratio vs Dijkstra $0.9728\times$).
+      - Samples clearance every $5\text{ cm}$ along path with penalty on vs off: min $0.1400$ m, mean $0.4093$ m vs $0.4095$ m, p10 $0.2000$ m vs $0.2200$ m.
+      - Pure PNG encoder (zero npm dependencies, built-in `node:zlib`) generated $792 \times 960$ top-down visualization to `docs/images/nav_demo.png` ($18.6$ KB).
+  - **Phase 2: POI Data Model, Spatial Index & Search (Pure TypeScript)** -- COMPLETE (2026-11-22):
+    - Framework-free POI engine implemented in `viewer/src/poi/` with zero Three.js / DOM imports:
+      - `poi_types.ts`: Defined complete POI data model: `{ id, name, category, aliases, tags, position, height?, zone?, anchor, description?, unreachable? }`, zone schemas (`circle`, `rect` with yaw, `polygon`), and `POISceneFile` (`viewer/public/scene/poi.json`).
+      - `loader.ts`: Comprehensive dataset validation rejecting duplicate IDs, missing/empty names, non-finite/NaN coordinates, out-of-bounds pins, and malformed zones. Dynamic anchor snapping to `walkable === 1` cells via `snapToWalkable`, displacement warning (> 1.0 m), and unreachable tagging.
+      - `spatial_index.ts`: 2D uniform grid spatial hash (~1.0 m cell size) with Jordan curve polygon ray-casting, rotated rectangle half-extent hit testing (with -yaw transformation), and circle testing. Provides `queryPoint(x, z)`, `nearest(x, z, k)` sorted by distance to anchor, and `withinRadius(x, z, r)` matching brute-force search exactly.
+      - `search.ts`: Multi-attribute fuzzy search engine with text normalization, simple plural reduction (`s`, `es`, `ies`), Damerau-Levenshtein typo tolerance (1 edit for 4–6 letter words, 2 edits for 7+ letters), weighted attribute ranking (exact name > prefix name > alias > category/tag > fuzzy), category query completeness (returns all instances), and walking distance tie-breaking via `originDistanceField`.
+      - `index.ts`: Unified barrel exports.
+    - Vitest unit tests in `viewer/test/poi.test.ts` (26 tests, all passing):
+      - Zone hit tests (circle, oriented rect at 45°, L-shaped non-convex polygon with concave notch).
+      - Exact spatial hash equivalence vs brute force across 1,000 random POIs for `nearest` ($k=1, 5, 20$) and `withinRadius` ($r=1, 3.5, 8, 25$ m).
+      - Search engine tests: exact name, prefix ("des" -> desk), alias, tag, category, typo ("dsk" -> desk, "cofee" -> coffee), plural ("desks" -> desk), multi-word ("small desk"), empty/whitespace queries `[]`, and distance field closest-first tie breaking.
+      - Loader validation error cases: duplicate ID, missing name, NaN coordinate, pin outside bounds, malformed zones, anchor move > 1 m warning, and unreachable pocket tagging.
+    - Test suite verification: **75 / 75 tests PASSED** in $1.81$ s (20 collision + 15 controls + 14 nav + 26 poi).
+    - Production build verification: `npm --prefix viewer run build` PASSED (2.54 s, zero TypeScript errors).
+    - Real scene dataset `viewer/public/scene/poi.json` deployed with 3 realistic POIs:
+      - POI 1: `poi_work_desk` ("Main Work Desk", category: "desk", pin: `[-2.650, -2.850]`, cell: `[32, 18]`, anchor: `[-2.650, -2.850]`, snap: $0.00$ m, clearance: $0.30$ m, path from spawn: $9.64$ m).
+      - POI 2: `poi_living_sofa` ("Living Room Sofa", category: "sofa", pin: `[-1.550, 3.150]`, cell: `[43, 78]`, anchor: `[-1.550, 3.150]`, snap: $0.00$ m, clearance: $0.36$ m, path from spawn: $3.36$ m).
+      - POI 3: `poi_study_desk` ("Study Desk", category: "desk", pin: `[1.850, -2.350]`, cell: `[77, 23]`, anchor: `[1.850, -2.350]`, snap: $0.00$ m, clearance: $0.30$ m, path from spawn: $5.88$ m).
+      - Pairwise walking distances: Work Desk $\leftrightarrow$ Sofa = $6.62$ m, Work Desk $\leftrightarrow$ Study Desk = $4.90$ m, Living Sofa $\leftrightarrow$ Study Desk = $8.39$ m ($> 6.0$ m requirement satisfied).
+    - Validation CLI `scripts/validate_pois.ts` executed and verified clean.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics
