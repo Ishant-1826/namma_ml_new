@@ -4,10 +4,11 @@
  * Key B toggles, default OFF.
  * +Z points DOWN the image (matching top.png).
  * Occupied cells dark, walkable cells light, free but not walkable cells mid-grey.
- * Overlays must not take pointer events.
+ * Supports rendering POI pins, zones, anchors, and interactive click / drag.
  */
 
 import { OccupancyGrid } from "./collision";
+import { POI } from "./poi/poi_types";
 
 export class Minimap {
   readonly container: HTMLElement;
@@ -18,6 +19,17 @@ export class Minimap {
   private _grid: OccupancyGrid | null = null;
   private _visible = false;
   private _lastDrawTime = 0;
+
+  private _pois: POI[] = [];
+  private _selectedPOIId: string | null = null;
+  private _authoringActive = false;
+  private _draggedPOI: POI | null = null;
+
+  // Interaction callbacks
+  public onPOIClick?: (poi: POI, event: PointerEvent) => void;
+  public onMapClick?: (worldPos: { x: number; z: number }, event: PointerEvent) => void;
+  public onPOIDrag?: (poi: POI, newWorldPos: { x: number; z: number }) => void;
+  public onPOIDragEnd?: (poi: POI) => void;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -31,6 +43,7 @@ export class Minimap {
     this._offscreenCanvas = document.createElement("canvas");
     this._offscreenCtx = this._offscreenCanvas.getContext("2d")!;
 
+    this.setupInteractions();
     this.setVisible(false);
   }
 
@@ -80,6 +93,18 @@ export class Minimap {
     this.canvas.height = Math.round(220 * aspect);
   }
 
+  setPOIs(pois: POI[]): void {
+    this._pois = pois;
+  }
+
+  setSelectedPOI(poiId: string | null): void {
+    this._selectedPOIId = poiId;
+  }
+
+  setAuthoringMode(active: boolean): void {
+    this._authoringActive = active;
+  }
+
   toggle(): boolean {
     this.setVisible(!this._visible);
     return this._visible;
@@ -95,7 +120,117 @@ export class Minimap {
   }
 
   /**
-   * Redraws player position and heading arrow at most 10 times per second (>= 100 ms).
+   * Sets up interactive pointer handlers on the minimap canvas.
+   */
+  private setupInteractions(): void {
+    this.canvas.style.pointerEvents = "auto";
+    this.canvas.style.cursor = "pointer";
+
+    // Stop propagation so clicking minimap does not request canvas pointer-lock
+    this.container.addEventListener("click", (e) => e.stopPropagation());
+    this.canvas.addEventListener("click", (e) => e.stopPropagation());
+
+    this.canvas.addEventListener("pointerdown", (e: PointerEvent) => {
+      e.stopPropagation();
+      if (!this._grid) return;
+
+      const rect = this.canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+
+      // Check hit against POI pins
+      const hitPOI = this.findPOIAtPixel(px, py, 10.0);
+      if (hitPOI) {
+        if (this._authoringActive) {
+          this._draggedPOI = hitPOI;
+          this.canvas.setPointerCapture(e.pointerId);
+        }
+        if (this.onPOIClick) {
+          this.onPOIClick(hitPOI, e);
+        }
+      } else {
+        const world = this.pixelToWorld(px, py);
+        if (this.onMapClick) {
+          this.onMapClick(world, e);
+        }
+      }
+    });
+
+    this.canvas.addEventListener("pointermove", (e: PointerEvent) => {
+      if (!this._draggedPOI || !this._grid || !this._authoringActive) return;
+      e.stopPropagation();
+
+      const rect = this.canvas.getBoundingClientRect();
+      const px = e.clientX - rect.left;
+      const py = e.clientY - rect.top;
+      const world = this.pixelToWorld(px, py);
+
+      if (this.onPOIDrag) {
+        this.onPOIDrag(this._draggedPOI, world);
+      }
+    });
+
+    const endDrag = (e: PointerEvent) => {
+      if (this._draggedPOI) {
+        e.stopPropagation();
+        try {
+          this.canvas.releasePointerCapture(e.pointerId);
+        } catch {
+          // ignore
+        }
+        if (this.onPOIDragEnd) {
+          this.onPOIDragEnd(this._draggedPOI);
+        }
+        this._draggedPOI = null;
+      }
+    };
+
+    this.canvas.addEventListener("pointerup", endDrag);
+    this.canvas.addEventListener("pointercancel", endDrag);
+  }
+
+  private pixelToWorld(px: number, py: number): { x: number; z: number } {
+    if (!this._grid) return { x: 0, z: 0 };
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const col = (px / w) * this._grid.width;
+    const row = (py / h) * this._grid.height;
+    return {
+      x: this._grid.origin[0] + col * this._grid.cell_size,
+      z: this._grid.origin[1] + row * this._grid.cell_size,
+    };
+  }
+
+  private worldToPixel(x: number, z: number): { px: number; py: number } {
+    if (!this._grid) return { px: 0, py: 0 };
+    const originX = this._grid.origin[0];
+    const originZ = this._grid.origin[1];
+    const cellSize = this._grid.cell_size;
+    const col = (x - originX) / cellSize;
+    const row = (z - originZ) / cellSize;
+    return {
+      px: (col / this._grid.width) * this.canvas.width,
+      py: (row / this._grid.height) * this.canvas.height,
+    };
+  }
+
+  private findPOIAtPixel(px: number, py: number, radiusPx = 10.0): POI | null {
+    let closest: POI | null = null;
+    let minD = radiusPx;
+
+    for (const p of this._pois) {
+      const pos = this.worldToPixel(p.position.x, p.position.z);
+      const d = Math.hypot(pos.px - px, pos.py - py);
+      if (d < minD) {
+        minD = d;
+        closest = p;
+      }
+    }
+    return closest;
+  }
+
+  /**
+   * Redraws player position, heading arrow, and POI markers at most 10 times per second (>= 100 ms).
    * +Z points DOWN the canvas.
    */
   update(playerX: number, playerZ: number, yawRad: number, now: number): void {
@@ -109,20 +244,63 @@ export class Minimap {
 
     ctx.clearRect(0, 0, w, h);
 
-    // Blit pre-rendered offscreen grid
+    // 1. Blit pre-rendered offscreen grid
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this._offscreenCanvas, 0, 0, w, h);
 
-    // Map player position (world X, Z) to minimap pixels
-    const originX = this._grid.origin[0];
-    const originZ = this._grid.origin[1];
-    const cellSize = this._grid.cell_size;
+    // 2. Draw POIs (Zones, Anchors, Pins)
+    for (const poi of this._pois) {
+      const pinPx = this.worldToPixel(poi.position.x, poi.position.z);
+      const anchorPx = this.worldToPixel(poi.anchor.x, poi.anchor.z);
 
-    const col = (playerX - originX) / cellSize;
-    const row = (playerZ - originZ) / cellSize;
+      const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
+      const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
+      const isSelected = poi.id === this._selectedPOIId;
 
-    const px = (col / this._grid.width) * w;
-    const py = (row / this._grid.height) * h;
+      // Draw Zone if circular
+      if (poi.zone && poi.zone.type === "circle") {
+        const zoneRadiusPx = (poi.zone.radius / (this._grid.width * this._grid.cell_size)) * w;
+        ctx.beginPath();
+        ctx.arc(pinPx.px, pinPx.py, zoneRadiusPx, 0, Math.PI * 2);
+        ctx.fillStyle = isWarning ? "rgba(239, 68, 68, 0.15)" : "rgba(0, 229, 255, 0.15)";
+        ctx.fill();
+        ctx.lineWidth = 1.0;
+        ctx.strokeStyle = isWarning ? "rgba(239, 68, 68, 0.5)" : "rgba(0, 229, 255, 0.5)";
+        ctx.stroke();
+      }
+
+      // Draw displacement line connecting pin to anchor if moved
+      if (Math.hypot(anchorPx.px - pinPx.px, anchorPx.py - pinPx.py) > 1.5) {
+        ctx.beginPath();
+        ctx.moveTo(pinPx.px, pinPx.py);
+        ctx.lineTo(anchorPx.px, anchorPx.py);
+        ctx.lineWidth = 1.0;
+        ctx.setLineDash([2, 2]);
+        ctx.strokeStyle = isWarning ? "#ef4444" : "#38ef7d";
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Draw Snapped Anchor (small green dot)
+      ctx.beginPath();
+      ctx.arc(anchorPx.px, anchorPx.py, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = isWarning ? "#ef4444" : "#38ef7d";
+      ctx.fill();
+
+      // Draw Pin marker
+      ctx.beginPath();
+      ctx.arc(pinPx.px, pinPx.py, isSelected ? 6.5 : 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = isWarning ? "#ef4444" : isSelected ? "#38ef7d" : "#00e5ff";
+      ctx.fill();
+      ctx.lineWidth = isSelected ? 2.0 : 1.2;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    }
+
+    // 3. Map player position (world X, Z) to minimap pixels
+    const playerPixel = this.worldToPixel(playerX, playerZ);
+    const px = playerPixel.px;
+    const py = playerPixel.py;
 
     // Draw player dot
     ctx.beginPath();
@@ -134,7 +312,7 @@ export class Minimap {
     ctx.stroke();
 
     // Draw heading arrow (yaw 0 points North / -Z, which is UP the image: dirZ < 0)
-    // +Z is DOWN in canvas coords (py + dirZ * len)
+    // +Z is DOWN in canvas coords (py + dirY * len)
     const dirX = -Math.sin(yawRad);
     const dirY = -Math.cos(yawRad); // dirY < 0 when pointing North (-Z)
     const arrowLen = 12;

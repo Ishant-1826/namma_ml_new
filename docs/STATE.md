@@ -719,6 +719,35 @@ cd viewer && npm run dev
       - POI 3: `poi_study_desk` ("Study Desk", category: "desk", pin: `[1.850, -2.350]`, cell: `[77, 23]`, anchor: `[1.850, -2.350]`, snap: $0.00$ m, clearance: $0.30$ m, path from spawn: $5.88$ m).
       - Pairwise walking distances: Work Desk $\leftrightarrow$ Sofa = $6.62$ m, Work Desk $\leftrightarrow$ Study Desk = $4.90$ m, Living Sofa $\leftrightarrow$ Study Desk = $8.39$ m ($> 6.0$ m requirement satisfied).
     - Validation CLI `scripts/validate_pois.ts` executed and verified clean.
+  - **Phase 3: POI Markers, Click-to-Reveal & Authoring Mode** -- COMPLETE (2026-11-23):
+    - **Startup & Graceful Degradation**: `poi.json` loaded at startup via `fetch`, with automatic fallback to `localStorage` drafts (`namma_space_poi_draft`) and graceful continuation if missing or malformed.
+    - **3D POI Billboard Sprites (`viewer/src/ui/poi_overlay.ts`)**:
+      - Procedurally generated canvas textures rendered once per POI with crisp typography, category subtitles, status dots, and stem pointers.
+      - Billboard `THREE.Sprite` at $(x, \text{height} \approx 1.2, z)$ with constant on-screen size via perspective scaling ($2 \cdot d \cdot \tan(\text{fov}/2) \cdot \text{scale}$).
+      - `depthTest: false`, `renderOrder: 9999` so splats never occlude markers.
+      - Distance fading: full opacity at $\le 6$ m, linear fade out to 0 at $\ge 8$ m.
+      - Key `L` toggles labels visibility.
+      - Snapped anchor visualizer: small green dot at $(anchor.x, 0.02, anchor.z)$ on floor (turns red if unreachable or displacement $> 1$ m).
+    - **Click-to-Reveal Info Card (`viewer/src/ui/poi_card.ts`)**:
+      - Dual-mode hit testing: works in locked mode (center crosshair pick point) and free-cursor mode (mouse position).
+      - Multi-stage raycast: screen-space pin projection test ($\le 36$ px radius) + ground-plane ($y=0$) raycast queried via `SpatialIndex.queryPoint(x, z)`.
+      - Displays POI Name, category pill, distance from camera, anchor snap status, aliases, description, and "Navigate Here" action (disabled until Phase 5).
+    - **Minimap Extension (`viewer/src/minimap.ts`)**:
+      - Renders POI pins, zone boundaries (circles), and snapped anchors directly on the 2D floor plan canvas.
+      - Clickable: clicking a minimap POI opens its info card.
+      - Interactive dragging: in authoring mode, POI pins can be dragged across the minimap to update their coordinates in real time.
+    - **Authoring Mode (`viewer/src/ui/poi_authoring.ts`)**:
+      - Toggled via Key `P` with pulsing `"EDIT POIs (Key P)"` badge and floating action toolbar.
+      - Click floor or minimap to drop pins; interactive creation and edit modal form (name, category dropdown + custom, aliases, zone radius, height, description).
+      - Snapped anchor validation: updates anchor via `NavGrid.snapToWalkable`, turning pin red if unreachable or $> 1$ m displacement.
+      - Toolbar buttons: "Export poi.json" (triggers browser download), "Import poi.json" (validates via `loadPOIs`), and autosave drafts to `localStorage`.
+      - Key isolation: typing in form inputs/textareas does not trigger WASD movement or viewer hotkeys.
+    - **Render Loop Performance & Zero Allocation**:
+      - Zero heap allocations per frame: static vector reuse (`_camPos`, `_projVec`, `_raycaster`, `_ndcVec`).
+      - F3 Telemetry recorded: **144 FPS / 6.9 ms** (identical to Phase 0 baseline: 144 FPS / 6.9 ms).
+      - Vitest test suite: **75 / 75 tests PASSED** in 949 ms.
+      - Typecheck & Production build: `tsc --noEmit` and `npm run build` PASSED (1.41 s).
+      - Authoring export verified via `npx tsx scripts/validate_pois.ts` (exit code 0).
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

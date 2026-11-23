@@ -3,6 +3,13 @@ import { SparkRenderer, SplatMesh } from "@sparkjsdev/spark";
 import { FirstPersonControls, EYE_HEIGHT_M } from "./controls";
 import { OccupancyGrid, SceneBounds, isPointInUnknownCell } from "./collision";
 import { Minimap } from "./minimap";
+import { NavGrid } from "./nav/navgrid";
+import { POI } from "./poi/poi_types";
+import { loadPOIs } from "./poi/loader";
+import { SpatialIndex } from "./poi/spatial_index";
+import { POIOverlay } from "./ui/poi_overlay";
+import { POICard } from "./ui/poi_card";
+import { POIAuthoring, LOCAL_STORAGE_POI_DRAFT_KEY } from "./ui/poi_authoring";
 
 // Asset base from Vite env (default empty = same origin)
 const ASSET_BASE = (import.meta.env.VITE_ASSET_BASE || "/scene").replace(/\/+$/, "");
@@ -144,6 +151,13 @@ let currentManifest: SceneManifest | null = null;
 let currentOccupancy: OccupancyGrid | null = null;
 let activeQualityTier: QualityTier = loadSavedQuality();
 
+let poiOverlay: POIOverlay;
+let poiCard: POICard;
+let poiAuthoring: POIAuthoring;
+let navGrid: NavGrid | null = null;
+let spatialIndex: SpatialIndex | null = null;
+let activePOIs: POI[] = [];
+
 let loadedFileName = "—";
 let loadDurationMs = 0;
 let loadedSplatsCount = 0;
@@ -259,6 +273,60 @@ function initGraphics() {
   // Minimap initialization
   minimap = new Minimap(minimapContainer);
 
+  // POI 3D Overlay, Card, and Authoring initialization
+  poiOverlay = new POIOverlay();
+  scene.add(poiOverlay.group);
+
+  poiCard = new POICard();
+  poiAuthoring = new POIAuthoring({
+    onPOIsChange: (updated) => {
+      activePOIs = updated;
+      spatialIndex = new SpatialIndex(activePOIs, 1.0);
+      poiOverlay.setPOIs(activePOIs);
+      minimap.setPOIs(activePOIs);
+    },
+    onSelectPOI: (poi) => {
+      poiOverlay.setSelectedPOI(poi ? poi.id : null);
+      minimap.setSelectedPOI(poi ? poi.id : null);
+      if (poi) {
+        poiCard.show(poi, { x: camera.position.x, z: camera.position.z }, poiAuthoring.isActive());
+      } else {
+        poiCard.hide();
+      }
+    },
+  });
+
+  poiCard.onEdit = (poi) => {
+    poiAuthoring.editPOI(poi);
+  };
+  poiCard.onDelete = (poi) => {
+    poiAuthoring.deletePOI(poi.id);
+    poiCard.hide();
+  };
+  poiCard.onClose = () => {
+    poiOverlay.setSelectedPOI(null);
+    minimap.setSelectedPOI(null);
+  };
+
+  // Minimap interactions
+  minimap.onPOIClick = (poi) => {
+    controls.unlock();
+    poiOverlay.setSelectedPOI(poi.id);
+    minimap.setSelectedPOI(poi.id);
+    poiCard.show(poi, { x: camera.position.x, z: camera.position.z }, poiAuthoring.isActive());
+  };
+  minimap.onMapClick = (worldPos) => {
+    if (poiAuthoring.isActive()) {
+      controls.unlock();
+      poiAuthoring.dropNewPin(worldPos.x, worldPos.z);
+    }
+  };
+  minimap.onPOIDrag = (poi, newPos) => {
+    if (poiAuthoring.isActive()) {
+      poiAuthoring.movePOI(poi.id, newPos.x, newPos.z);
+    }
+  };
+
   // Apply active quality resolution scale and Spark LOD settings
   applyQualitySettings(activeQualityTier);
 
@@ -315,8 +383,52 @@ function initGraphics() {
     }
   }
 
-  // Canvas click / tap
-  renderer.domElement.addEventListener("click", () => {
+  // Canvas click / tap with Click-to-Reveal and Authoring Pin Placement
+  renderer.domElement.addEventListener("click", (e: MouseEvent) => {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const screenX = controls.isLocked ? w / 2 : e.clientX;
+    const screenY = controls.isLocked ? h / 2 : e.clientY;
+
+    if (poiAuthoring.isActive()) {
+      // Check existing pin/zone hit in authoring mode
+      const hit = poiOverlay.hitTest(screenX, screenY, w, h, camera, spatialIndex ?? undefined);
+      if (hit) {
+        poiOverlay.setSelectedPOI(hit.id);
+        minimap.setSelectedPOI(hit.id);
+        poiCard.show(hit, { x: camera.position.x, z: camera.position.z }, true);
+        return;
+      }
+
+      // Raycast floor to drop new pin
+      const floorHit = poiOverlay.raycastFloor(screenX, screenY, w, h, camera);
+      if (floorHit) {
+        controls.unlock();
+        poiAuthoring.dropNewPin(floorHit.x, floorHit.z);
+        return;
+      }
+      return;
+    }
+
+    // Normal mode: Click-to-Reveal
+    const hit = poiOverlay.hitTest(screenX, screenY, w, h, camera, spatialIndex ?? undefined);
+    if (hit) {
+      controls.unlock();
+      poiOverlay.setSelectedPOI(hit.id);
+      minimap.setSelectedPOI(hit.id);
+      poiCard.show(hit, { x: camera.position.x, z: camera.position.z }, false);
+      return;
+    }
+
+    // If card was open, close it
+    if (poiCard.isOpen()) {
+      poiCard.hide();
+      poiOverlay.setSelectedPOI(null);
+      minimap.setSelectedPOI(null);
+      return;
+    }
+
+    // Otherwise acquire pointer lock
     if (!controls.isLocked) {
       controls.requestLock();
     }
@@ -342,8 +454,14 @@ function initGraphics() {
     applyQualitySettings("high");
   });
 
-  // Keyboard shortcut listener for Quality (1, 2, 3), F3 Stats, Minimap (B), Head-bob (H), Walkable (L)
+  // Keyboard shortcut listener
   window.addEventListener("keydown", (e: KeyboardEvent) => {
+    // Form input isolation: never trigger movement or viewer hotkeys while typing in forms
+    const target = e.target as HTMLElement | null;
+    if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+      return;
+    }
+
     if (e.code === "Digit1" || e.key === "1") {
       applyQualitySettings("low");
     } else if (e.code === "Digit2" || e.key === "2") {
@@ -354,13 +472,25 @@ function initGraphics() {
       const isVisible = minimap.toggle();
       statsMinimapVal.textContent = isVisible ? "ON (Key B)" : "OFF (Key B)";
     } else if (e.code === "KeyH") {
-      // FirstPersonControls internal listener toggles it; update DOM
       statsHeadbobVal.textContent = controls.headBobEnabled ? "ON (Key H)" : "OFF (Key H)";
     } else if (e.code === "KeyL") {
-      const limit = controls.toggleWalkableLimit();
-      statsWalkableVal.textContent = limit ? "ON" : "OFF";
+      const visible = poiOverlay.toggleLabels();
+      console.log(`[Viewer] POI Labels toggled: ${visible ? "ON" : "OFF"}`);
+    } else if (e.code === "KeyP") {
+      const active = poiAuthoring.toggle();
+      poiOverlay.setAuthoringMode(active);
+      minimap.setAuthoringMode(active);
+      if (active) {
+        controls.unlock();
+      }
     } else if (e.code === "KeyU") {
       statsExploreVal.textContent = controls.exploreUnknown ? "ON (Key U)" : "OFF (Key U)";
+    } else if (e.code === "Escape") {
+      if (poiCard.isOpen()) {
+        poiCard.hide();
+        poiOverlay.setSelectedPOI(null);
+        minimap.setSelectedPOI(null);
+      }
     } else if (e.code === "F3" || e.key === "F3") {
       e.preventDefault();
       statsPanelVisible = !statsPanelVisible;
@@ -392,6 +522,7 @@ function initGraphics() {
     const now = performance.now();
 
     controls.update(dt);
+    poiOverlay.update(camera);
     renderer.render(scene, camera);
 
     // Update unreconstructed area HUD badge (Key U Explore Mode)
@@ -445,6 +576,10 @@ function updateStatsDOM(): void {
   statsHeadbobVal.textContent = controls.headBobEnabled ? "ON (Key H)" : "OFF (Key H)";
   statsMinimapVal.textContent = minimap.isVisible ? "ON (Key B)" : "OFF (Key B)";
   statsExploreVal.textContent = controls.exploreUnknown ? "ON (Key U)" : "OFF (Key U)";
+  const statsPoisVal = document.getElementById("stats-pois");
+  if (statsPoisVal && poiOverlay) {
+    statsPoisVal.textContent = `${activePOIs.length} (Labels: ${poiOverlay.labelsVisible ? "ON" : "OFF"})`;
+  }
 }
 
 // Fetch Manifest, Load Occupancy Grid, and Load Splat Assets
@@ -497,6 +632,58 @@ async function loadScene() {
   const spawnZ = manifest.spawn_position[2];
   const spawnYaw = manifest.spawn_yaw;
   controls.setSpawn(spawnX, manifest.floor_y, spawnZ, spawnYaw);
+
+  // Initialize NavGrid from occupancy and spawn point
+  if (currentOccupancy) {
+    navGrid = new NavGrid(currentOccupancy, [spawnX, spawnZ]);
+    poiAuthoring.setNavGrid(navGrid);
+  }
+
+  // Load POI Dataset (graceful fallback if missing or invalid)
+  const poiJsonUrl = `${ASSET_BASE}/poi.json`;
+  try {
+    console.log(`[Viewer] Loading POIs from ${poiJsonUrl}`);
+    const poiRes = await fetch(poiJsonUrl);
+    let rawPoiData: unknown = null;
+    if (poiRes.ok) {
+      rawPoiData = await poiRes.json();
+    } else {
+      console.warn(`[Viewer] poi.json not found at ${poiJsonUrl} (HTTP ${poiRes.status}). Proceeding without POIs.`);
+    }
+
+    // Check localStorage draft first
+    try {
+      const draftStr = localStorage.getItem(LOCAL_STORAGE_POI_DRAFT_KEY);
+      if (draftStr) {
+        const draft = JSON.parse(draftStr);
+        if (draft && Array.isArray(draft.pois) && draft.pois.length > 0) {
+          console.log(`[Viewer] Using autosaved POI draft from localStorage (${draft.pois.length} POIs)`);
+          rawPoiData = draft;
+        }
+      }
+    } catch (err) {
+      console.warn("[Viewer] Could not read localStorage POI draft:", err);
+    }
+
+    if (rawPoiData && navGrid) {
+      const loadResult = loadPOIs(rawPoiData, navGrid);
+      if (loadResult.errors.length > 0) {
+        console.warn(`[Viewer] poi.json validation errors:`, loadResult.errors);
+      }
+      if (loadResult.warnings.length > 0) {
+        console.warn(`[Viewer] poi.json warnings:`, loadResult.warnings);
+      }
+      activePOIs = loadResult.pois;
+      console.log(`[Viewer] Successfully loaded ${activePOIs.length} POI(s).`);
+    }
+  } catch (poiErr) {
+    console.warn(`[Viewer] Failed to load/parse poi.json:`, poiErr);
+  }
+
+  spatialIndex = new SpatialIndex(activePOIs, 1.0);
+  poiOverlay.setPOIs(activePOIs);
+  minimap.setPOIs(activePOIs);
+  poiAuthoring.setPOIs(activePOIs);
 
   // Identify splat file candidates
   const spzFileName = manifest.splat_files?.spz || "scene.spz";

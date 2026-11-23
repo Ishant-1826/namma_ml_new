@@ -308,6 +308,11 @@ export class FirstPersonControls {
 
     // Keyboard inputs
     this._onKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+        return;
+      }
+
       switch (e.code) {
         case "KeyW":
         case "ArrowUp":
@@ -342,6 +347,10 @@ export class FirstPersonControls {
     };
 
     this._onKeyUp = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
+        return;
+      }
       switch (e.code) {
         case "KeyW":
         case "ArrowUp":

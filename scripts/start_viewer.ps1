@@ -1,5 +1,5 @@
 # scripts/start_viewer.ps1
-$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Continue'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location "$repoRoot/viewer"
 
