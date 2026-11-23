@@ -3,52 +3,130 @@
   "version": 1,
   "pois": [
     {
-      "id": "poi_work_desk",
-      "name": "Main Work Desk",
-      "category": "desk",
-      "aliases": ["workstation", "office desk", "pc setup"],
-      "tags": ["work", "computer", "table"],
-      "position": { "x": -2.65, "z": -2.85 },
-      "height": 0.75,
-      "zone": {
-        "type": "rect",
-        "width": 1.2,
-        "depth": 0.8,
-        "yaw": 0.0
+      "id": "poi_mwtputfk",
+      "name": "study table",
+      "category": "table",
+      "aliases": [
+        "table to study"
+      ],
+      "tags": [],
+      "position": {
+        "x": -0.11020154533256271,
+        "z": 2.0395625058104923
       },
-      "description": "Primary workspace desk in the study area."
+      "height": 1.2
     },
     {
-      "id": "poi_living_sofa",
-      "name": "Living Room Sofa",
-      "category": "sofa",
-      "aliases": ["couch", "lounge seating", "settee"],
-      "tags": ["living room", "furniture", "seating"],
-      "position": { "x": -1.55, "z": 3.15 },
-      "height": 0.85,
-      "zone": {
-        "type": "rect",
-        "width": 1.8,
-        "depth": 0.9,
-        "yaw": 0.0
+      "id": "poi_mwtpw9ci",
+      "name": "bench",
+      "category": "chair",
+      "aliases": [
+        "bench to sit"
+      ],
+      "tags": [],
+      "position": {
+        "x": -0.9037768866685927,
+        "z": -4.225255810695793
       },
-      "description": "Comfortable seating area in the living lounge."
+      "height": 1.2
     },
     {
-      "id": "poi_study_desk",
-      "name": "Study Desk",
-      "category": "desk",
-      "aliases": ["writing desk", "side desk", "reading table"],
-      "tags": ["study", "table", "reading"],
-      "position": { "x": 1.85, "z": -2.35 },
-      "height": 0.75,
-      "zone": {
-        "type": "rect",
-        "width": 1.0,
-        "depth": 0.6,
-        "yaw": 0.0
+      "id": "poi_mwtpxghg",
+      "name": "black table",
+      "category": "table",
+      "aliases": [
+        "table"
+      ],
+      "tags": [],
+      "position": {
+        "x": 2.4468241544154363,
+        "z": 0.21697631339497597
       },
-      "description": "Secondary study and reading desk."
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtpy180",
+      "name": "measuring tape",
+      "category": "tape",
+      "aliases": [
+        "inch tape"
+      ],
+      "tags": [],
+      "position": {
+        "x": 3.2555247267001306,
+        "z": 3.479495930061959
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtpz80a",
+      "name": "Last bench",
+      "category": "chair",
+      "aliases": [
+        "honeycomb chair"
+      ],
+      "tags": [],
+      "position": {
+        "x": -3.1393383869093547,
+        "z": -2.001045360436414
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtq2ihq",
+      "name": "benchX2",
+      "category": "desk",
+      "aliases": [
+        "bench to sit"
+      ],
+      "tags": [],
+      "position": {
+        "x": 2.4847251041503906,
+        "z": -1.631838532322977
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtq3i2y",
+      "name": "study tableX2",
+      "category": "table",
+      "aliases": [
+        "table to study"
+      ],
+      "tags": [],
+      "position": {
+        "x": -2.9244657364657565,
+        "z": 2.6685988020374927
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtq62ei",
+      "name": "black tableX2",
+      "category": "table",
+      "aliases": [
+        "table"
+      ],
+      "tags": [],
+      "position": {
+        "x": 2.848350218216204,
+        "z": 2.2682522637833147
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mwtq7gns",
+      "name": "Last benchX2",
+      "category": "chair",
+      "aliases": [
+        "honeycomb chair"
+      ],
+      "tags": [],
+      "position": {
+        "x": 0.23397759691363906,
+        "z": -2.0752834896207686
+      },
+      "height": 1.2
     }
   ]
 }

@@ -402,5 +402,83 @@ describe("Phase 1 Navigation Core (Pure TypeScript)", () => {
         expect(collisions).toBe(0);
       });
     }
+
+    describe("POI Anchor Snapping & Reachability Fix", () => {
+      it("(a) every anchor returned by the new snap passes isCircleBlocked r=0.08", () => {
+        const testPoints = [
+          { x: 1.771, z: 3.523 }, // spawn
+          { x: -0.110, z: 2.040 },
+          { x: -0.904, z: -4.225 },
+          { x: 2.447, z: 0.217 },
+          { x: 3.256, z: 3.479 },
+          { x: -3.139, z: -2.001 },
+          { x: 2.485, z: -1.632 },
+          { x: -2.924, z: 2.669 },
+          { x: 2.848, z: 2.268 },
+          { x: 0.234, z: -2.075 },
+          { x: 0.0, z: 0.0 },
+          { x: 1.0, z: -1.0 },
+          { x: -2.0, z: 2.0 },
+        ];
+
+        for (const pt of testPoints) {
+          const snapped = realGrid.snapToWalkable(pt.x, pt.z, 2.0);
+          if (snapped) {
+            expect(isCircleBlocked(realGrid.rawOccupancy, snapped.x, snapped.z, 0.08, false, false)).toBe(false);
+            expect(realGrid.isWalkable(snapped.x, snapped.z)).toBe(true);
+            // Must be exact cell center
+            const cell = realGrid.worldToCell(snapped.x, snapped.z);
+            const center = realGrid.cellToWorld(cell.col, cell.row);
+            expect(snapped.x).toBeCloseTo(center.x, 5);
+            expect(snapped.z).toBeCloseTo(center.z, 5);
+          }
+        }
+      });
+
+      it("(b) for 9 pins taken from the diagnostic table, each anchor is circle-free and findPath from spawn succeeds", () => {
+        const diagnosticPins = [
+          { name: "study table", x: -0.11020154533256271, z: 2.0395625058104923 },
+          { name: "bench", x: -0.9037768866685927, z: -4.225255810695793 },
+          { name: "black table", x: 2.4468241544154363, z: 0.21697631339497597 },
+          { name: "measuring tape", x: 3.2555247267001306, z: 3.479495930061959 },
+          { name: "Last bench", x: -3.1393383869093547, z: -2.001045360436414 },
+          { name: "benchX2", x: 2.4847251041503906, z: -1.631838532322977 },
+          { name: "study tableX2", x: -2.9244657364657565, z: 2.6685988020374927 },
+          { name: "black tableX2", x: 2.848350218216204, z: 2.2682522637833147 },
+          { name: "Last benchX2", x: 0.23397759691363906, z: -2.0752834896207686 },
+        ];
+
+        const spawn = { x: 1.771, z: 3.523 };
+
+        for (const pin of diagnosticPins) {
+          const snapped = realGrid.snapToWalkable(pin.x, pin.z, 1.5);
+          expect(snapped).not.toBeNull();
+          if (!snapped) continue;
+
+          // Circle-free at r = 0.08m
+          const blocked = isCircleBlocked(realGrid.rawOccupancy, snapped.x, snapped.z, 0.08, false, false);
+          expect(blocked).toBe(false);
+
+          // Clearance check
+          const cl = realGrid.getClearance(snapped.x, snapped.z);
+          expect(cl).toBeGreaterThanOrEqual(0.19);
+
+          // findPath from spawn succeeds
+          const pathRes = findPath(realGrid, spawn, snapped);
+          expect("points" in pathRes).toBe(true);
+          if ("points" in pathRes) {
+            expect(pathRes.points.length).toBeGreaterThan(0);
+            expect(pathRes.lengthM).toBeGreaterThan(0);
+          }
+        }
+      });
+
+      it("(c) a pin far from any walkable cell still returns null", () => {
+        expect(realGrid.snapToWalkable(100.0, 100.0, 1.5)).toBeNull();
+        expect(realGrid.snapToWalkable(-50.0, -50.0, 1.5)).toBeNull();
+        expect(realGrid.snapToWalkable(0.0, 100.0, 1.5)).toBeNull();
+        expect(realGrid.snapToWalkable(-100.0, 0.0, 1.5)).toBeNull();
+      });
+    });
   });
 });

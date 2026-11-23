@@ -13,7 +13,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
-import { OccupancyGrid } from "../viewer/src/collision";
+import { OccupancyGrid, isCircleBlocked } from "../viewer/src/collision";
 import { NavGrid } from "../viewer/src/nav/navgrid";
 import { findPath } from "../viewer/src/nav/pathfinder";
 import { loadPOIs } from "../viewer/src/poi/loader";
@@ -101,6 +101,9 @@ function main(): void {
       allReachable = false;
     }
 
+    const cl = navGrid.getClearance(poi.anchor.x, poi.anchor.z);
+    const circleFree = !isCircleBlocked(navGrid.rawOccupancy, poi.anchor.x, poi.anchor.z, 0.08, false, false);
+
     poiDetails.push({
       poi,
       pinCell,
@@ -114,7 +117,9 @@ function main(): void {
     console.log(`  - Pin position:   (${poi.position.x.toFixed(3)}, ${poi.position.z.toFixed(3)}) -> Cell [col: ${pinCell.col}, row: ${pinCell.row}]`);
     console.log(`  - Anchor:         (${poi.anchor.x.toFixed(3)}, ${poi.anchor.z.toFixed(3)}) -> Cell [col: ${anchorCell.col}, row: ${anchorCell.row}]`);
     console.log(`  - Snap distance:  ${snapDist.toFixed(3)} m`);
-    console.log(`  - Walkable cell:  ${navGrid.isCellWalkable(anchorCell.col, anchorCell.row)} (clearance: ${navGrid.getClearance(poi.anchor.x, poi.anchor.z).toFixed(2)} m)`);
+    console.log(`  - Clearance:      ${cl.toFixed(3)} m${poi.lowClearance ? " (low clearance)" : ""}`);
+    console.log(`  - Circle-free:    ${circleFree ? "YES" : "NO"} (r=0.08 m)`);
+    console.log(`  - Walkable cell:  ${navGrid.isCellWalkable(anchorCell.col, anchorCell.row)}`);
     console.log(`  - From spawn:     Reachable = ${reachable ? "YES" : "NO"}${pathRes && "lengthM" in pathRes ? ` (path length: ${pathRes.lengthM.toFixed(2)} m, compute: ${pathRes.computeMs.toFixed(2)} ms)` : ""}`);
     if (poi.zone) {
       console.log(`  - Zone:           ${poi.zone.type} (${JSON.stringify(poi.zone)})`);

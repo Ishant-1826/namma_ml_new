@@ -35,6 +35,7 @@ export interface POI {
   anchor: { x: number; z: number }; // computed navigable coordinate on walkable===1 cell
   description?: string;
   unreachable?: boolean;
+  lowClearance?: boolean;
 }
 
 export interface RawPOIZoneCircle {

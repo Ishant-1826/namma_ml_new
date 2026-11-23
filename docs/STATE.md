@@ -748,6 +748,19 @@ cd viewer && npm run dev
       - Vitest test suite: **75 / 75 tests PASSED** in 949 ms.
       - Typecheck & Production build: `tsc --noEmit` and `npm run build` PASSED (1.41 s).
       - Authoring export verified via `npx tsx scripts/validate_pois.ts` (exit code 0).
+  - **Phase 3 Follow-up: POI Anchor Snapping & Circle Collision Fix** -- COMPLETE (2026-11-24):
+    - **Root Cause Identified**: Previously, `snapToWalkable` picked the closest `walkable === 1` cell to obstacle pins, which landed on the boundary directly touching the obstacle. At cell centers (distance 0.05 m to obstacle), testing `isCircleBlocked` at player radius $r = 0.08$ m failed ($0.05 < 0.08$), causing A* expansion in `findPath` to prune all boundary cells and declare the anchors unreachable.
+    - **Walkable Cells Audit**: Out of 2,195 `walkable === 1` cells, 849 cells (38.68%) fail `isCircleBlocked` at $r = 0.08$ m, 707 cells (32.21%) have clearance $< 0.20$ m (all 707 fail circle test), and 78 cells have `state === 3` (inflated obstacle buffer from Round 1 camera path carving). 1,346 cells pass both criteria.
+    - **`snapToWalkable` Redesign (`viewer/src/nav/navgrid.ts`)**:
+      - Candidate cells must satisfy: `walkable === 1`, `!isCircleBlocked at r = 0.08 m`, and `clearance >= 0.20 m`.
+      - Fallback: nearest circle-free `walkable === 1` cell, flagged as `lowClearance: true`.
+      - Search radius parameterized (`maxDistM = 1.5` m default).
+      - Prioritizes reachable cells connected to spawn.
+      - Anchors are strictly cell centers (`cellToWorld(col, row)`).
+    - **Verification & Testing**:
+      - `scripts/validate_pois.ts` updated to print pin cell, anchor cell, snap distance, clearance, circle-free flag, and path length. All 9 scene POIs pass 100% (all reachable from spawn, pairwise distances up to 10.82 m).
+      - Added 3 Vitest tests to `nav.test.ts` covering anchor circle-freedom, reachability for all 9 diagnostic pins, and far-point null returns.
+      - Total Vitest tests: **78 / 78 PASSED**. Production build & TypeScript check clean.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

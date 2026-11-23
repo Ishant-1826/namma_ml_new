@@ -210,13 +210,18 @@ export function loadPOIs(
     // 8. Anchor computation (snapToWalkable on walkable===1 cells only)
     let anchor: { x: number; z: number } = { x: px, z: pz };
     let unreachable = false;
+    let lowClearance = false;
 
     const snapped = grid.snapToWalkable(px, pz, maxSnapDistM);
     if (!snapped) {
       unreachable = true;
       warnings.push(`POI [${id}] is unreachable: no walkable cell found within ${maxSnapDistM} m of (${px.toFixed(2)}, ${pz.toFixed(2)})`);
     } else {
-      anchor = snapped;
+      anchor = { x: snapped.x, z: snapped.z };
+      lowClearance = Boolean(snapped.lowClearance);
+      if (lowClearance) {
+        warnings.push(`POI [${id}] anchor at (${anchor.x.toFixed(2)}, ${anchor.z.toFixed(2)}) has low clearance (< 0.20 m)`);
+      }
       const snapDist = Math.hypot(anchor.x - px, anchor.z - pz);
       if (snapDist > warnSnapThresholdM) {
         warnings.push(`POI [${id}] anchor moved ${snapDist.toFixed(2)} m (> ${warnSnapThresholdM} m) from pin position (${px.toFixed(2)}, ${pz.toFixed(2)}) to walkable cell center (${anchor.x.toFixed(2)}, ${anchor.z.toFixed(2)})`);
@@ -235,6 +240,7 @@ export function loadPOIs(
       anchor,
       description,
       unreachable,
+      lowClearance,
     });
   }
 

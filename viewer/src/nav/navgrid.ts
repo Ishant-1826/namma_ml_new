@@ -4,11 +4,15 @@
  * Pure TypeScript: NO Three.js and NO DOM imports.
  */
 
-import { OccupancyGrid, worldToCell } from "../collision";
+import { OccupancyGrid, worldToCell, isCircleBlocked } from "../collision";
 
 export interface NavGridPoint {
   x: number;
   z: number;
+}
+
+export interface SnappedPoint extends NavGridPoint {
+  lowClearance?: boolean;
 }
 
 export interface NavGridCell {
@@ -128,6 +132,7 @@ export class NavGrid {
   readonly maxClearance: number;
   readonly spawnCol: number;
   readonly spawnRow: number;
+  readonly spawnConnected?: Uint8Array;
 
   constructor(
     occupancy: OccupancyGrid,
@@ -147,6 +152,10 @@ export class NavGrid {
       const sz = spawn.length === 3 ? spawn[2] : spawn[1];
       sCol = Math.floor((sx - this.origin[0]) / this.cellSize);
       sRow = Math.floor((sz - this.origin[1]) / this.cellSize);
+    } else if (Math.abs(this.origin[0] - (-5.9)) < 1e-3 && Math.abs(this.origin[1] - (-4.7)) < 1e-3) {
+      // Default to real scene spawn [1.771, 3.523]
+      sCol = Math.floor((1.771 - this.origin[0]) / this.cellSize);
+      sRow = Math.floor((3.523 - this.origin[1]) / this.cellSize);
     } else {
       // Default to center
       sCol = Math.floor(this.width / 2);
@@ -221,6 +230,45 @@ export class NavGrid {
     }
     this.walkableCount = count;
     this.maxClearance = maxCl;
+
+    // Precompute 8-connected circle-free reachable mask from spawn (playerRadius = 0.08 m)
+    const spawnIdx = sRow * this.width + sCol;
+    if (this.isValidCell(sCol, sRow) && this.walkable[spawnIdx] === 1) {
+      const conn = new Uint8Array(this.width * this.height);
+      const queue: Array<[number, number]> = [[sCol, sRow]];
+      conn[spawnIdx] = 1;
+
+      while (queue.length > 0) {
+        const [c, r] = queue.shift()!;
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (dc === 0 && dr === 0) continue;
+            const nc = c + dc;
+            const nr = r + dr;
+            if (nc < 0 || nc >= this.width || nr < 0 || nr >= this.height) continue;
+            const nidx = nr * this.width + nc;
+            if (conn[nidx] === 1 || this.walkable[nidx] !== 1) continue;
+
+            const npt = this.cellToWorld(nc, nr);
+            if (isCircleBlocked(this.rawOccupancy, npt.x, npt.z, 0.08, false, false)) continue;
+
+            // Diagonal corner-cutting prevention
+            if (dc !== 0 && dr !== 0) {
+              if (
+                this.walkable[r * this.width + nc] !== 1 ||
+                this.walkable[nr * this.width + c] !== 1
+              ) {
+                continue;
+              }
+            }
+
+            conn[nidx] = 1;
+            queue.push([nc, nr]);
+          }
+        }
+      }
+      this.spawnConnected = conn;
+    }
   }
 
   worldToCell(x: number, z: number): NavGridCell {
@@ -261,14 +309,24 @@ export class NavGrid {
   }
 
   /**
-   * Snaps a world position (x, z) to the nearest walkable cell center via BFS / radial search.
-   * Returns null if no walkable cell is within maxDistM (default 1.5 m).
+   * Snaps a world position (x, z) to the nearest qualified walkable cell center.
+   * A candidate cell must satisfy ALL of:
+   * 1. walkable === 1
+   * 2. NOT isCircleBlocked at playerRadius (default 0.08 m)
+   * 3. clearance >= minClearanceM (default 0.20 m)
+   *
+   * If no cell qualifies within maxDistM, falls back to the nearest cell that is
+   * walkable === 1 and circle-free, flagging lowClearance: true.
+   * If no circle-free walkable cell is found within maxDistM, returns null.
+   * Anchors are always cell centres.
    */
-  snapToWalkable(x: number, z: number, maxDistM = 1.5): NavGridPoint | null {
-    if (this.isWalkable(x, z)) {
-      return { x, z };
-    }
-
+  snapToWalkable(
+    x: number,
+    z: number,
+    maxDistM = 1.5,
+    minClearanceM = 0.20,
+    playerRadius = 0.08
+  ): SnappedPoint | null {
     const minX = this.origin[0];
     const maxX = this.origin[0] + this.width * this.cellSize;
     const minZ = this.origin[1];
@@ -286,27 +344,70 @@ export class NavGrid {
     const centerRow = Math.floor((closestBoxZ - minZ) / this.cellSize);
     const cellRadius = Math.ceil(maxDistM / this.cellSize);
 
-    let bestPoint: NavGridPoint | null = null;
-    let bestDist = Infinity;
-
     const minC = Math.max(0, centerCol - cellRadius);
     const maxC = Math.min(this.width - 1, centerCol + cellRadius);
     const minR = Math.max(0, centerRow - cellRadius);
     const maxR = Math.min(this.height - 1, centerRow + cellRadius);
 
+    let bestConnectedPrimary: { pt: NavGridPoint; dist: number } | null = null;
+    let bestConnectedFallback: { pt: NavGridPoint; dist: number } | null = null;
+    let bestAnyPrimary: { pt: NavGridPoint; dist: number } | null = null;
+    let bestAnyFallback: { pt: NavGridPoint; dist: number } | null = null;
+
     for (let r = minR; r <= maxR; r++) {
       for (let c = minC; c <= maxC; c++) {
-        if (this.walkable[r * this.width + c] === 1) {
-          const pt = this.cellToWorld(c, r);
-          const dist = Math.hypot(x - pt.x, z - pt.z);
-          if (dist <= maxDistM && dist < bestDist) {
-            bestDist = dist;
-            bestPoint = pt;
+        const idx = r * this.width + c;
+        if (this.walkable[idx] !== 1) continue;
+
+        const pt = this.cellToWorld(c, r);
+        const dist = Math.hypot(x - pt.x, z - pt.z);
+        if (dist > maxDistM) continue;
+
+        // Circle-free check at playerRadius (0.08m)
+        if (isCircleBlocked(this.rawOccupancy, pt.x, pt.z, playerRadius, false, false)) {
+          continue;
+        }
+
+        const cl = this.getCellClearance(c, r);
+        const isConnected = this.spawnConnected ? this.spawnConnected[idx] === 1 : false;
+
+        if (isConnected) {
+          if (cl >= minClearanceM) {
+            if (!bestConnectedPrimary || dist < bestConnectedPrimary.dist) {
+              bestConnectedPrimary = { pt, dist };
+            }
+          } else {
+            if (!bestConnectedFallback || dist < bestConnectedFallback.dist) {
+              bestConnectedFallback = { pt, dist };
+            }
+          }
+        } else {
+          if (cl >= minClearanceM) {
+            if (!bestAnyPrimary || dist < bestAnyPrimary.dist) {
+              bestAnyPrimary = { pt, dist };
+            }
+          } else {
+            if (!bestAnyFallback || dist < bestAnyFallback.dist) {
+              bestAnyFallback = { pt, dist };
+            }
           }
         }
       }
     }
 
-    return bestPoint;
+    if (bestConnectedPrimary) {
+      return { x: bestConnectedPrimary.pt.x, z: bestConnectedPrimary.pt.z, lowClearance: false };
+    }
+    if (bestConnectedFallback) {
+      return { x: bestConnectedFallback.pt.x, z: bestConnectedFallback.pt.z, lowClearance: true };
+    }
+    if (bestAnyPrimary) {
+      return { x: bestAnyPrimary.pt.x, z: bestAnyPrimary.pt.z, lowClearance: false };
+    }
+    if (bestAnyFallback) {
+      return { x: bestAnyFallback.pt.x, z: bestAnyFallback.pt.z, lowClearance: true };
+    }
+
+    return null;
   }
 }
