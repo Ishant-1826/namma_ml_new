@@ -1636,5 +1636,268 @@ html, body {
   }
 }
 
+/* ==========================================================================
+   Phase 5: Navigation Guidance HUD & Arrival Banner Styles
+   ========================================================================== */
+
+.guidance-hud {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+  animation: hudFadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.guidance-hud.hidden {
+  display: none !important;
+}
+
+@keyframes hudFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.guidance-hud-card {
+  pointer-events: auto;
+  background: rgba(15, 23, 42, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 20px rgba(2, 132, 199, 0.2);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.guidance-hud-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.guidance-dest-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.guidance-dest-icon {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.guidance-dest-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.guidance-metrics-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.guidance-metric-distance {
+  color: #38bdf8;
+}
+
+.guidance-metric-dot {
+  color: #64748b;
+  font-size: 10px;
+}
+
+.guidance-metric-eta {
+  color: #34d399;
+}
+
+.guidance-progress-track {
+  width: 100%;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.guidance-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #10b981);
+  border-radius: 9999px;
+  transition: width 0.2s ease-out;
+}
+
+.guidance-instruction-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+}
+
+.guidance-turn-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.guidance-turn-icon {
+  font-size: 20px;
+}
+
+.guidance-instruction-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.guidance-instruction-text {
+  font-size: 14px;
+  font-weight: 700;
+  color: #ffffff;
+  line-height: 1.3;
+}
+
+.guidance-debug-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #94a3b8;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-sm);
+  border: 1px dashed rgba(245, 158, 11, 0.4);
+}
+
+.guidance-debug-bar.hidden {
+  display: none !important;
+}
+
+.guidance-debug-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.guidance-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-guidance-follow,
+.btn-guidance-clear {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-height: 40px;
+  transition: all 0.15s ease;
+}
+
+.btn-guidance-follow {
+  background: linear-gradient(135deg, #0284c7, #0369a1);
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  color: #ffffff;
+  box-shadow: 0 2px 10px rgba(2, 132, 199, 0.3);
+}
+
+.btn-guidance-follow:hover {
+  background: linear-gradient(135deg, #0369a1, #075985);
+}
+
+.btn-guidance-follow.active-walking {
+  background: linear-gradient(135deg, #eab308, #ca8a04);
+  border-color: #fde047;
+  color: #1e293b;
+  box-shadow: 0 2px 10px rgba(234, 179, 8, 0.4);
+}
+
+.btn-guidance-clear {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+  flex: 0 0 95px;
+}
+
+.btn-guidance-clear:hover {
+  background: rgba(239, 68, 68, 0.3);
+  color: #ffffff;
+}
+
+/* Arrival Banner */
+.guidance-arrival-banner {
+  pointer-events: auto;
+  position: absolute;
+  top: -55px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #10b981, #059669);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 18px;
+  border-radius: 9999px;
+  box-shadow: 0 10px 25px rgba(16, 185, 129, 0.4);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  animation: bannerPop 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.guidance-arrival-banner.hidden {
+  display: none !important;
+}
+
+@keyframes bannerPop {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(1);
+  }
+}
+
+
 
 

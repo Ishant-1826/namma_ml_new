@@ -21,10 +21,14 @@ export interface FindPathOptions {
   snapStart?: boolean;
   /** Automatically snap a blocked goal position to nearest walkable cell within 1.5 m. Default false. */
   snapGoal?: boolean;
+  /** When true, collects all expanded cell coordinates for debug visualization (key O). Default false. */
+  collectExplored?: boolean;
 }
 
 export interface PathSuccess {
   points: NavGridPoint[];
+  rawPoints?: NavGridPoint[];
+  exploredCells?: Array<{ col: number; row: number }>;
   lengthM: number;
   computeMs: number;
   expandedNodes: number;
@@ -222,6 +226,8 @@ export function findPath(
     const directLen = Math.hypot(goal.x - start.x, goal.z - start.z);
     return {
       points: [start, goal],
+      rawPoints: [start, goal],
+      exploredCells: opts?.collectExplored ? [{ col: startCell.col, row: startCell.row }] : undefined,
       lengthM: directLen,
       computeMs: performance.now() - startTime,
       expandedNodes: 1,
@@ -252,6 +258,8 @@ export function findPath(
 
   let expandedNodes = 0;
   let reachedGoal = false;
+  const collectExplored = opts?.collectExplored === true;
+  const exploredCells: Array<{ col: number; row: number }> = collectExplored ? [] : [];
 
   while (heap.size > 0) {
     const node = heap.pop()!;
@@ -260,6 +268,9 @@ export function findPath(
 
     if (c === goalCell.col && r === goalCell.row) {
       reachedGoal = true;
+      if (collectExplored) {
+        exploredCells.push({ col: c, row: r });
+      }
       break;
     }
 
@@ -268,6 +279,9 @@ export function findPath(
     }
 
     expandedNodes++;
+    if (collectExplored) {
+      exploredCells.push({ col: c, row: r });
+    }
 
     // 8-connected neighbors
     for (let dr = -1; dr <= 1; dr++) {
@@ -381,6 +395,8 @@ export function findPath(
 
   return {
     points: smoothed,
+    rawPoints,
+    exploredCells: collectExplored ? exploredCells : undefined,
     lengthM,
     computeMs,
     expandedNodes,

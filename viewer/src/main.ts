@@ -15,6 +15,9 @@ import { JumpController } from "./ui/jump_controller";
 import { DistanceFieldGate } from "./poi/jump_math";
 import { dijkstraFrom } from "./nav/distance_field";
 import { isCircleBlocked } from "./collision";
+import { RouteRenderer } from "./ui/route_renderer";
+import { GuidanceHUD } from "./ui/guidance_hud";
+import { NavigationController } from "./ui/navigation_controller";
 
 // Asset base from Vite env (default empty = same origin)
 const ASSET_BASE = (import.meta.env.VITE_ASSET_BASE || "/scene").replace(/\/+$/, "");
@@ -162,19 +165,28 @@ let poiAuthoring: POIAuthoring;
 let searchBar: SearchBar;
 let jumpController: JumpController;
 let distanceGate: DistanceFieldGate;
+let routeRenderer: RouteRenderer;
+let guidanceHUD: GuidanceHUD;
+let navController: NavigationController;
 let navGrid: NavGrid | null = null;
 let spatialIndex: SpatialIndex | null = null;
 let activePOIs: POI[] = [];
 
 /**
- * Single exported navigation callback for Phase 5 to implement.
- * Shows a toast with route info and logs request.
+ * Single exported navigation callback for Phase 5.
+ * Begins path guidance to target POI.
  */
 export function onNavigateRequested(poi: POI, distanceM?: number): void {
   const distText = distanceM !== undefined ? ` (Distance: ${distanceM.toFixed(1)} m)` : "";
   console.log(`[Navigation] Requested navigation to "${poi.name}"${distText}`);
-  if (searchBar) {
-    searchBar.showToast(`Route guidance arrives in the next phase${distText}`);
+  if (searchBar && searchBar.isOpen()) {
+    searchBar.close(true);
+  }
+  if (poiCard && poiCard.isOpen()) {
+    poiCard.hide();
+  }
+  if (navController) {
+    navController.startNavigation(poi);
   }
 }
 
@@ -474,12 +486,47 @@ function initGraphics() {
     triggerJumpToPOI(poi);
   };
   poiCard.onNavigate = (poi) => {
+    poiCard.hide();
     onNavigateRequested(poi);
   };
+
+  // Phase 5: 3D Route Display, Guidance HUD, and Navigation Controller
+  routeRenderer = new RouteRenderer();
+  scene.add(routeRenderer.group);
+
+  guidanceHUD = new GuidanceHUD({
+    onFollowRoute: () => {
+      navController.toggleAutoWalk();
+    },
+    onClearRoute: () => {
+      navController.clearRoute();
+    },
+    onToggleDebug: () => {
+      navController.toggleDebugOverlay();
+    },
+  });
+
+  navController = new NavigationController({
+    navGrid: () => navGrid,
+    occupancy: () => currentOccupancy,
+    camera,
+    controls,
+    minimap,
+    routeRenderer,
+    guidanceHUD,
+    showToast: (msg) => {
+      if (searchBar) {
+        searchBar.showToast(msg);
+      }
+    },
+  });
 
   controls.onUserActivity = () => {
     if (jumpController.isActive()) {
       jumpController.cancelJump("user input");
+    }
+    if (navController && navController.isAutoWalking()) {
+      navController.cancelAutoWalk("user input");
     }
   };
 
@@ -624,6 +671,12 @@ function initGraphics() {
       }
     } else if (e.code === "KeyU") {
       statsExploreVal.textContent = controls.exploreUnknown ? "ON (Key U)" : "OFF (Key U)";
+    } else if (e.code === "KeyG") {
+      navController.toggleAutoWalk();
+    } else if (e.code === "KeyC") {
+      navController.clearRoute();
+    } else if (e.code === "KeyO") {
+      navController.toggleDebugOverlay();
     } else if (e.code === "Escape") {
       if (searchBar.isOpen()) {
         searchBar.close(true);
@@ -636,6 +689,9 @@ function initGraphics() {
       minimap.setSelectedPOI(null);
       poiOverlay.setCategoryFilter(null);
       minimap.setCategoryFilter(null);
+      if (navController.isActive()) {
+        navController.clearRoute();
+      }
     } else if (e.code === "F3" || e.key === "F3") {
       e.preventDefault();
       statsPanelVisible = !statsPanelVisible;
@@ -668,6 +724,7 @@ function initGraphics() {
 
     controls.update(dt);
     jumpController.update(dt);
+    navController.update(dt, now);
     poiOverlay.update(camera);
     renderer.render(scene, camera);
 

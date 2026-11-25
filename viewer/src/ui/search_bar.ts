@@ -317,8 +317,6 @@ export class SearchBar {
   }
 
   private triggerNavigate(poi: POI, distanceM?: number): void {
-    const distText = distanceM !== undefined ? ` (Distance: ${distanceM.toFixed(1)} m)` : "";
-    this.showToast(`Route guidance arrives in the next phase${distText}`);
     this.close(true);
     this._callbacks.onNavigateRequested?.(poi, distanceM);
   }

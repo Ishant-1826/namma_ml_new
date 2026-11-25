@@ -804,6 +804,47 @@ cd viewer && npm run dev
     - **Layered Draw Order**: Minimap draws dimmed/normal POIs first, matching blue POIs second, and selected green POI last on top of everything. In 3D, sprites and floor rings use staged `renderOrder` so highlights are never occluded.
     - **Pure-Logic Tests**: Added 4 unit tests verifying `getPOIHighlightState` and `getEffectiveCategory` across selected, match, dimmed, and normal states with case/whitespace insensitivity.
     - **Verification**: **102 / 102 Vitest tests PASSED**; `tsc --noEmit` clean; production build PASSED (1.95 s); 144 FPS / 6.9 ms verified live via browser subagent.
+  - **Phase 5: Obstacle-aware Route Display and Guidance** -- COMPLETE (2026-11-25):
+    - **Pure Logic Navigation Modules (`viewer/src/nav/`)**:
+      - `route_state.ts`: Pure functional state machine handling `idle -> selected -> navigating -> arrived` states, debounced reroute timing, auto-walk toggles, and debug overlays.
+      - `instructions.ts`: Generates remaining distance (rounded to 0.5 m), ETA at 1.4 m/s, progress fraction, and next turn instruction ("Continue N m", "Turn left/right in N m", "Turn sharply left/right in N m", "Arrive in N m").
+      - **Yaw & Turn Angle Verification**: Validated turn conventions where North is -Z, East is +X, South is +Z, West is -X. Signed 2D cross-product rigorously verified against `controls.ts` yaw conventions (positive yaw turns left).
+      - **Path Projection**: `projectPlayerOnPath` calculates nearest point, distance off path, segment index, distance along path, and remaining distance with zero heap allocation per call (reusing pre-allocated out objects).
+    - **3D Route Floor Rendering & Light Beacon (`viewer/src/ui/route_renderer.ts`)**:
+      - Floor chevrons at $y = 0.03$ rendered using pre-allocated `THREE.InstancedMesh` (350 max instances). Arrow geometries oriented toward goal, `depthTest: false`, `renderOrder: 9999`, full opacity for initial 12 m, smoothly fading between 12 m and 16 m. Updated strictly when paths change or progress moves $\ge 0.15$ m (zero allocations per frame).
+      - Vertical destination beacon: 2.8 m tall dual-layer translucent cylinder with breathing opacity pulse and slow rotation centered at target anchor.
+    - **Guidance HUD (`viewer/src/ui/guidance_hud.ts`)**:
+      - Bottom-center floating card positioned without overlapping search bar, minimap, or F3 stats panel at both 1280x720 and 390 px mobile width. Touch targets $\ge 40$ px.
+      - Displays destination name, walking distance, ETA, turn icon + instruction text, animated progress bar, "Follow Route (Key G)" auto-walk button, and "Clear (Key C)" button.
+      - Automatically triggers arrival banner ("You have arrived at <name>") within 0.6 m of the destination anchor.
+    - **Automatic Re-routing**:
+      - Off-path detection triggers when player is $> 0.8$ m off the polyline.
+      - Debounced to at most 2 re-routes per second (500 ms minimum interval) with "Re-routing..." toast.
+      - If alternative route is blocked or unreachable, graceful fallback preserves current path.
+    - **Auto-Walk (Key G)**:
+      - Traverses smoothed path at 1.4 m/s at eye height 1.45 m with smooth yaw interpolation toward upcoming waypoints.
+      - Obstacle avoidance: verifies `!isCircleBlocked(r = 0.08 m)` each step; cancels immediately with toast if blocked.
+      - Instant cancellation on any WASD, mouse, or touch input, restoring player state via `controls.teleportTo`.
+    - **Debug Navigation Overlay (Key O)**:
+      - Toggles display of A* explored cells (collected only when debug is ON), raw A* path (dashed orange line) vs smoothed path (solid cyan line), and destination flag on the 2D minimap floor plan.
+      - HUD debug stats bar displays path length (m), A* compute time (ms), and expanded node count.
+    - **Keybindings & Search Integration**:
+      - Hotkeys: G (Auto-walk), O (Debug overlay), C (Clear route). Fully isolated from text input typing.
+      - Phase 4 search results "Navigate" button and `Enter` key start navigation.
+      - Phase 3 POI card "Navigate" button starts navigation.
+    - **Evaluation on 3 Far-Apart Real POI Pairs (`scripts/eval_phase5_routes.ts`)**:
+      - Pair 1 ("Last bench" -> "door"): 11.50 m, 4.42 ms, 646 nodes, 8 instructions.
+      - Pair 2 ("Last bench" -> "study table"): 10.59 m, 4.06 ms, 726 nodes, 8 instructions.
+      - Pair 3 ("measuring tape" -> "Last bench"): 10.82 m, 2.21 ms, 1170 nodes, 7 instructions.
+    - **Performance & F3 Telemetry**:
+      - Route active, minimap open, debug overlay ON: **144 FPS / 6.9 ms** (matching baseline).
+      - Zero per-frame heap allocations during render loop.
+    - **Testing & Verification**:
+      - 25 new pure logic tests added to `viewer/test/navigation_guidance.test.ts`.
+      - Total Vitest tests: **127 / 127 PASSED** across 6 test suites.
+      - TypeScript check (`tsc --noEmit`): 0 errors.
+      - Production build: `npm run build` PASSED (2.35 s).
+      - POI Validator (`scripts/validate_pois.ts`): 9/9 POIs valid, circle-free ($r = 0.08$ m), and 100% reachable.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

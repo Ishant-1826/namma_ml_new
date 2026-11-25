@@ -30,6 +30,13 @@ export class Minimap {
   private _pulseStartTime = 0;
   private _pulseDurationMs = 2000;
 
+  // Phase 5 Route Guidance & Debug Overlay
+  private _routePath: Array<{ x: number; z: number }> | null = null;
+  private _destinationAnchor: { x: number; z: number } | null = null;
+  private _debugOverlayActive = false;
+  private _rawPath: Array<{ x: number; z: number }> | null = null;
+  private _exploredCells: Array<{ col: number; row: number }> | null = null;
+
   // Interaction callbacks
   public onPOIClick?: (poi: POI, event: PointerEvent) => void;
   public onMapClick?: (worldPos: { x: number; z: number }, event: PointerEvent) => void;
@@ -119,6 +126,21 @@ export class Minimap {
 
   setAuthoringMode(active: boolean): void {
     this._authoringActive = active;
+  }
+
+  setRoute(path: Array<{ x: number; z: number }> | null, anchor: { x: number; z: number } | null): void {
+    this._routePath = path;
+    this._destinationAnchor = anchor;
+  }
+
+  setDebugOverlay(
+    active: boolean,
+    rawPath?: Array<{ x: number; z: number }> | null,
+    exploredCells?: Array<{ col: number; row: number }> | null
+  ): void {
+    this._debugOverlayActive = active;
+    this._rawPath = rawPath ?? null;
+    this._exploredCells = exploredCells ?? null;
   }
 
   toggle(): boolean {
@@ -263,6 +285,79 @@ export class Minimap {
     // 1. Blit pre-rendered offscreen grid
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this._offscreenCanvas, 0, 0, w, h);
+
+    // 1b. Debug Overlay: Explored cells and Raw A* Path (Key O)
+    if (this._debugOverlayActive && this._grid) {
+      const cellW = w / this._grid.width;
+      const cellH = h / this._grid.height;
+
+      // Draw A* explored cells
+      if (this._exploredCells && this._exploredCells.length > 0) {
+        ctx.fillStyle = "rgba(250, 204, 21, 0.40)";
+        for (let i = 0; i < this._exploredCells.length; i++) {
+          const { col, row } = this._exploredCells[i];
+          ctx.fillRect(col * cellW, row * cellH, Math.max(1, cellW), Math.max(1, cellH));
+        }
+      }
+
+      // Draw raw A* path vs smoothed path
+      if (this._rawPath && this._rawPath.length >= 2) {
+        ctx.beginPath();
+        const startRaw = this.worldToPixel(this._rawPath[0].x, this._rawPath[0].z);
+        ctx.moveTo(startRaw.px, startRaw.py);
+        for (let i = 1; i < this._rawPath.length; i++) {
+          const pt = this.worldToPixel(this._rawPath[i].x, this._rawPath[i].z);
+          ctx.lineTo(pt.px, pt.py);
+        }
+        ctx.strokeStyle = "#f97316"; // Orange
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 2]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
+    // 1c. Draw Navigation Route Polyline & Destination Flag
+    if (this._routePath && this._routePath.length >= 2) {
+      ctx.beginPath();
+      const startPt = this.worldToPixel(this._routePath[0].x, this._routePath[0].z);
+      ctx.moveTo(startPt.px, startPt.py);
+      for (let i = 1; i < this._routePath.length; i++) {
+        const pt = this.worldToPixel(this._routePath[i].x, this._routePath[i].z);
+        ctx.lineTo(pt.px, pt.py);
+      }
+      ctx.strokeStyle = "#00e5ff"; // Bright Cyan
+      ctx.lineWidth = 2.5;
+      ctx.lineJoin = "round";
+      ctx.lineCap = "round";
+      ctx.setLineDash([]);
+      ctx.stroke();
+
+      // Destination flag at destination anchor
+      if (this._destinationAnchor) {
+        const flagPx = this.worldToPixel(this._destinationAnchor.x, this._destinationAnchor.z);
+
+        // Flagpole
+        ctx.beginPath();
+        ctx.moveTo(flagPx.px, flagPx.py);
+        ctx.lineTo(flagPx.px, flagPx.py - 14);
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Green flag pennant
+        ctx.beginPath();
+        ctx.moveTo(flagPx.px, flagPx.py - 14);
+        ctx.lineTo(flagPx.px + 9, flagPx.py - 10);
+        ctx.lineTo(flagPx.px, flagPx.py - 6);
+        ctx.closePath();
+        ctx.fillStyle = "#22c55e";
+        ctx.fill();
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+      }
+    }
 
     // 2. Partition POIs into render layers so highlighted / selected markers are drawn LAST
     const effectiveCategory = getEffectiveCategory(
