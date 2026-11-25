@@ -17,20 +17,6 @@
       "height": 1.2
     },
     {
-      "id": "poi_mwtpw9ci",
-      "name": "bench",
-      "category": "chair",
-      "aliases": [
-        "bench to sit"
-      ],
-      "tags": [],
-      "position": {
-        "x": -0.9037768866685927,
-        "z": -4.225255810695793
-      },
-      "height": 1.2
-    },
-    {
       "id": "poi_mwtpxghg",
       "name": "black table",
       "category": "table",
@@ -73,58 +59,58 @@
       "height": 1.2
     },
     {
-      "id": "poi_mwtq2ihq",
-      "name": "benchX2",
+      "id": "poi_mww27wpo",
+      "name": "bench",
       "category": "desk",
       "aliases": [
-        "bench to sit"
+        "student bench"
       ],
       "tags": [],
       "position": {
-        "x": 2.4847251041503906,
-        "z": -1.631838532322977
+        "x": -1.1446655955575742,
+        "z": -3.831935191178907
       },
       "height": 1.2
     },
     {
-      "id": "poi_mwtq3i2y",
-      "name": "study tableX2",
-      "category": "table",
+      "id": "poi_mww28tus",
+      "name": "stage",
+      "category": "desk",
       "aliases": [
-        "table to study"
+        "teacher's stage"
       ],
       "tags": [],
       "position": {
-        "x": -2.9244657364657565,
-        "z": 2.6685988020374927
+        "x": -1.2075904877534547,
+        "z": 5.01439860065542
       },
       "height": 1.2
     },
     {
-      "id": "poi_mwtq62ei",
-      "name": "black tableX2",
-      "category": "table",
+      "id": "poi_mww29gbo",
+      "name": "door",
+      "category": "desk",
       "aliases": [
-        "table"
+        "entrance"
       ],
       "tags": [],
       "position": {
-        "x": 2.848350218216204,
-        "z": 2.2682522637833147
+        "x": 2.7360418499365324,
+        "z": 5.999994277631918
       },
       "height": 1.2
     },
     {
-      "id": "poi_mwtq7gns",
-      "name": "Last benchX2",
-      "category": "chair",
+      "id": "poi_mww2ab9k",
+      "name": "window",
+      "category": "desk",
       "aliases": [
-        "honeycomb chair"
+        "scenery window"
       ],
       "tags": [],
       "position": {
-        "x": 0.23397759691363906,
-        "z": -2.0752834896207686
+        "x": 1.1516171900097087,
+        "z": -4.120994227468296
       },
       "height": 1.2
     }
