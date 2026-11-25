@@ -10,6 +10,11 @@ import { SpatialIndex } from "./poi/spatial_index";
 import { POIOverlay } from "./ui/poi_overlay";
 import { POICard } from "./ui/poi_card";
 import { POIAuthoring, LOCAL_STORAGE_POI_DRAFT_KEY } from "./ui/poi_authoring";
+import { SearchBar } from "./ui/search_bar";
+import { JumpController } from "./ui/jump_controller";
+import { DistanceFieldGate } from "./poi/jump_math";
+import { dijkstraFrom } from "./nav/distance_field";
+import { isCircleBlocked } from "./collision";
 
 // Asset base from Vite env (default empty = same origin)
 const ASSET_BASE = (import.meta.env.VITE_ASSET_BASE || "/scene").replace(/\/+$/, "");
@@ -154,9 +159,24 @@ let activeQualityTier: QualityTier = loadSavedQuality();
 let poiOverlay: POIOverlay;
 let poiCard: POICard;
 let poiAuthoring: POIAuthoring;
+let searchBar: SearchBar;
+let jumpController: JumpController;
+let distanceGate: DistanceFieldGate;
 let navGrid: NavGrid | null = null;
 let spatialIndex: SpatialIndex | null = null;
 let activePOIs: POI[] = [];
+
+/**
+ * Single exported navigation callback for Phase 5 to implement.
+ * Shows a toast with route info and logs request.
+ */
+export function onNavigateRequested(poi: POI, distanceM?: number): void {
+  const distText = distanceM !== undefined ? ` (Distance: ${distanceM.toFixed(1)} m)` : "";
+  console.log(`[Navigation] Requested navigation to "${poi.name}"${distText}`);
+  if (searchBar) {
+    searchBar.showToast(`Route guidance arrives in the next phase${distText}`);
+  }
+}
 
 let loadedFileName = "—";
 let loadDurationMs = 0;
@@ -284,6 +304,9 @@ function initGraphics() {
       spatialIndex = new SpatialIndex(activePOIs, 1.0);
       poiOverlay.setPOIs(activePOIs);
       minimap.setPOIs(activePOIs);
+      if (searchBar) {
+        searchBar.setPOIs(activePOIs);
+      }
     },
     onSelectPOI: (poi) => {
       poiOverlay.setSelectedPOI(poi ? poi.id : null);
@@ -360,6 +383,106 @@ function initGraphics() {
     }
   };
 
+  // Phase 4: Spatial Search UI, Distance Field Gate, and Jump Transition Controller
+  distanceGate = new DistanceFieldGate(0.5);
+  jumpController = new JumpController();
+
+  const triggerJumpToPOI = (poi: POI) => {
+    if (!navGrid || !currentOccupancy) {
+      console.warn("[Jump] Cannot jump: NavGrid or Occupancy is not initialized.");
+      return;
+    }
+
+    const radius = controls.playerRadius;
+    const passesCircle = !isCircleBlocked(currentOccupancy, poi.anchor.x, poi.anchor.z, radius);
+    const cell = navGrid.worldToCell(poi.anchor.x, poi.anchor.z);
+    const isWalkable = navGrid.isCellWalkable(cell.col, cell.row);
+
+    console.log(
+      `[Jump] Target POI: "${poi.name}" at anchor (${poi.anchor.x.toFixed(3)}, ${poi.anchor.z.toFixed(3)}), ` +
+      `cell=[${cell.col}, ${cell.row}], walkable=${isWalkable}, circleFree=${passesCircle}`
+    );
+
+    if (!passesCircle || !isWalkable) {
+      const reason = !isWalkable ? "anchor cell not walkable" : `fails circle test at r=${radius}m`;
+      console.warn(`[Jump] Blocked: POI "${poi.name}" anchor ${reason}`);
+      searchBar.showToast(`Cannot jump: Anchor for "${poi.name}" ${reason}`);
+      return;
+    }
+
+    jumpController.startJump(controls, navGrid, poi, {
+      durationS: 0.8,
+      playerRadius: radius,
+      onComplete: (p) => {
+        const endCell = navGrid!.worldToCell(camera.position.x, camera.position.z);
+        const endWalkable = navGrid!.isCellWalkable(endCell.col, endCell.row);
+        const endCircleFree = !isCircleBlocked(currentOccupancy!, camera.position.x, camera.position.z, radius);
+        console.log(
+          `[Jump] Jump landed at "${p.name}": cell=[${endCell.col}, ${endCell.row}], ` +
+          `walkable=${endWalkable}, circleFree=${endCircleFree}`
+        );
+        searchBar.showToast(`Jumped to "${p.name}"`);
+      },
+      onCancel: (p) => {
+        console.log(`[Jump] Jump to "${p.name}" cancelled by user input.`);
+      },
+    });
+  };
+
+  searchBar = new SearchBar(distanceGate, {
+    onOpen: () => {
+      controls.unlock();
+      const playerPos = { x: camera.position.x, z: camera.position.z };
+      if (navGrid && distanceGate.shouldRecompute(playerPos, true)) {
+        const playerCell = navGrid.worldToCell(playerPos.x, playerPos.z);
+        if (navGrid.isValidCell(playerCell.col, playerCell.row)) {
+          const field = dijkstraFrom(navGrid, playerCell);
+          distanceGate.updateField(playerPos, field);
+        }
+      }
+    },
+    onClose: (resumePointerLock) => {
+      if (resumePointerLock && !controls.isTouch && startOverlay.classList.contains("hidden")) {
+        controls.requestLock();
+      }
+    },
+    onSelectPOI: (poi) => {
+      if (poi) {
+        poiOverlay.setSelectedPOI(poi.id);
+        minimap.setSelectedPOI(poi.id);
+        poiOverlay.pulsePOI(poi.id, 2000);
+        minimap.pulsePOI(poi.id, 2000);
+      } else {
+        poiOverlay.setSelectedPOI(null);
+        minimap.setSelectedPOI(null);
+      }
+    },
+    onJumpRequested: (poi) => {
+      triggerJumpToPOI(poi);
+    },
+    onNavigateRequested: (poi, distanceM) => {
+      onNavigateRequested(poi, distanceM);
+    },
+    onCategoryFilter: (category) => {
+      poiOverlay.setCategoryFilter(category);
+      minimap.setCategoryFilter(category);
+    },
+  });
+
+  poiCard.onJump = (poi) => {
+    poiCard.hide();
+    triggerJumpToPOI(poi);
+  };
+  poiCard.onNavigate = (poi) => {
+    onNavigateRequested(poi);
+  };
+
+  controls.onUserActivity = () => {
+    if (jumpController.isActive()) {
+      jumpController.cancelJump("user input");
+    }
+  };
+
   // Touch device adaptations (detected via pointer: coarse / ontouchstart)
   if (controls.isTouch) {
     console.log("[Viewer] Touch device detected: configuring touch-friendly UI and virtual joystick");
@@ -411,6 +534,11 @@ function initGraphics() {
     }
 
     // Normal mode: Click-to-Reveal
+    if (searchBar.isOpen()) {
+      searchBar.close(true);
+      return;
+    }
+
     const hit = poiOverlay.hitTest(screenX, screenY, w, h, camera, spatialIndex ?? undefined);
     if (hit) {
       controls.unlock();
@@ -462,6 +590,17 @@ function initGraphics() {
       return;
     }
 
+    if (e.code === "Slash" || ((e.ctrlKey || e.metaKey) && e.code === "KeyK")) {
+      e.preventDefault();
+      if (poiCard.isOpen()) {
+        poiCard.hide();
+        poiOverlay.setSelectedPOI(null);
+        minimap.setSelectedPOI(null);
+      }
+      searchBar.open({ x: camera.position.x, z: camera.position.z });
+      return;
+    }
+
     if (e.code === "Digit1" || e.key === "1") {
       applyQualitySettings("low");
     } else if (e.code === "Digit2" || e.key === "2") {
@@ -486,6 +625,10 @@ function initGraphics() {
     } else if (e.code === "KeyU") {
       statsExploreVal.textContent = controls.exploreUnknown ? "ON (Key U)" : "OFF (Key U)";
     } else if (e.code === "Escape") {
+      if (searchBar.isOpen()) {
+        searchBar.close(true);
+        return;
+      }
       if (poiCard.isOpen()) {
         poiCard.hide();
         poiOverlay.setSelectedPOI(null);
@@ -522,6 +665,7 @@ function initGraphics() {
     const now = performance.now();
 
     controls.update(dt);
+    jumpController.update(dt);
     poiOverlay.update(camera);
     renderer.render(scene, camera);
 
@@ -637,6 +781,9 @@ async function loadScene() {
   if (currentOccupancy) {
     navGrid = new NavGrid(currentOccupancy, [spawnX, spawnZ]);
     poiAuthoring.setNavGrid(navGrid);
+    if (searchBar) {
+      searchBar.setGrid(navGrid);
+    }
   }
 
   // Load POI Dataset (graceful fallback if missing or invalid)
@@ -684,6 +831,9 @@ async function loadScene() {
   poiOverlay.setPOIs(activePOIs);
   minimap.setPOIs(activePOIs);
   poiAuthoring.setPOIs(activePOIs);
+  if (searchBar) {
+    searchBar.setPOIs(activePOIs);
+  }
 
   // Identify splat file candidates
   const spzFileName = manifest.splat_files?.spz || "scene.spz";

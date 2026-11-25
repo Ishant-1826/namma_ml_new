@@ -11,6 +11,7 @@ export class POICard {
   private _currentPOI: POI | null = null;
   private _isOpen = false;
 
+  public onJump?: (poi: POI) => void;
   public onNavigate?: (poi: POI) => void;
   public onEdit?: (poi: POI) => void;
   public onDelete?: (poi: POI) => void;
@@ -101,8 +102,11 @@ export class POICard {
       </div>
 
       <div class="poi-card-footer">
-        <button type="button" class="poi-nav-btn" id="poi-card-nav-btn" disabled title="Navigation routing will be available in Phase 5">
-          🧭 Navigate Here (Phase 5)
+        <button type="button" class="poi-jump-btn" id="poi-card-jump-btn" ${poi.unreachable ? "disabled title='Anchor is unreachable'" : "title='Jump to this POI'"}>
+          🚀 Jump Here
+        </button>
+        <button type="button" class="poi-nav-btn" id="poi-card-nav-btn" ${poi.unreachable ? "disabled title='Anchor is unreachable'" : "title='Navigate to this POI'"}>
+          🧭 Navigate
         </button>
         ${authorControlsHtml}
       </div>
@@ -111,6 +115,13 @@ export class POICard {
     // Hook events
     const closeBtn = this.container.querySelector("#poi-card-close-btn");
     closeBtn?.addEventListener("click", () => this.hide());
+
+    const jumpBtn = this.container.querySelector("#poi-card-jump-btn");
+    jumpBtn?.addEventListener("click", () => {
+      if (this.onJump && this._currentPOI) {
+        this.onJump(this._currentPOI);
+      }
+    });
 
     const navBtn = this.container.querySelector("#poi-card-nav-btn");
     navBtn?.addEventListener("click", () => {

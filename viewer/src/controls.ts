@@ -244,6 +244,7 @@ export class FirstPersonControls {
   public onHeadBobChange?: (enabled: boolean) => void;
   public onWalkableLimitChange?: (enabled: boolean) => void;
   public onExploreUnknownChange?: (enabled: boolean) => void;
+  public onUserActivity?: () => void;
 
   // Bound event handlers for clean teardown
   private readonly _onMouseMove: (e: MouseEvent) => void;
@@ -296,6 +297,10 @@ export class FirstPersonControls {
       const movementX = e.movementX || 0;
       const movementY = e.movementY || 0;
 
+      if (Math.abs(movementX) > 0 || Math.abs(movementY) > 0) {
+        this.onUserActivity?.();
+      }
+
       // Moving mouse right (movementX > 0) turns view right (decreases yaw)
       this._euler.y -= movementX * this.lookSensitivity;
 
@@ -312,6 +317,8 @@ export class FirstPersonControls {
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT")) {
         return;
       }
+
+      this.onUserActivity?.();
 
       switch (e.code) {
         case "KeyW":
@@ -567,7 +574,18 @@ export class FirstPersonControls {
     if (this.isTouch) {
       this.startTouchSession();
     } else {
-      this.domElement.requestPointerLock();
+      try {
+        const p = this.domElement.requestPointerLock() as unknown as Promise<void> | undefined;
+        if (p && typeof p.catch === "function") {
+          p.catch((err) => {
+            console.warn("[Controls] Pointer lock failed (fallback to cursor mode):", err);
+            this.startTouchSession();
+          });
+        }
+      } catch (err) {
+        console.warn("[Controls] Pointer lock threw (fallback to cursor mode):", err);
+        this.startTouchSession();
+      }
     }
   }
 
@@ -623,6 +641,15 @@ export class FirstPersonControls {
   reset(): void {
     this.camera.position.copy(this._spawnPosition);
     this._euler.set(0, this._spawnYaw, 0, "YXZ");
+    this.camera.quaternion.setFromEuler(this._euler);
+    this._velocity.set(0, 0, 0);
+    this._bobTimer = 0;
+    this.resetKeys();
+  }
+
+  teleportTo(x: number, y: number, z: number, yawRad: number, pitchRad = 0): void {
+    this.camera.position.set(x, y, z);
+    this._euler.set(pitchRad, yawRad, 0, "YXZ");
     this.camera.quaternion.setFromEuler(this._euler);
     this._velocity.set(0, 0, 0);
     this._bobTimer = 0;

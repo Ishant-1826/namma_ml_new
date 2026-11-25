@@ -761,6 +761,39 @@ cd viewer && npm run dev
       - `scripts/validate_pois.ts` updated to print pin cell, anchor cell, snap distance, clearance, circle-free flag, and path length. All 9 scene POIs pass 100% (all reachable from spawn, pairwise distances up to 10.82 m).
       - Added 3 Vitest tests to `nav.test.ts` covering anchor circle-freedom, reachability for all 9 diagnostic pins, and far-point null returns.
       - Total Vitest tests: **78 / 78 PASSED**. Production build & TypeScript check clean.
+  - **Phase 4: Spatial Search UI and Jump Transitions** -- COMPLETE (2026-11-25):
+    - **Spatial Search Bar (`viewer/src/ui/search_bar.ts`)**:
+      - Focuses via `/` or `Ctrl+K`; `Esc` closes and restores pointer lock cleanly.
+      - Full keyboard navigation: Up/Down arrow selection, `Enter` to navigate, `Shift+Enter` to jump.
+      - Complete typing isolation: `e.stopPropagation()` guarantees WASD, R, B, U, L, P, F3 never fire while typing.
+      - Live search results (max 8) ranked by relevance, with ties broken by walking distance.
+      - Empty state shows all real POIs sorted by walking distance and quick category chips.
+      - Unreachable POIs are displayed greyed out with an "Unreachable" warning badge and cannot be selected.
+      - Action bar shows "🚀 Jump Here" and "🧭 Navigate". "Navigate" triggers exported `onNavigateRequested(poi)` and shows toast notification.
+    - **Distance Field Gate (`viewer/src/poi/jump_math.ts`)**:
+      - Gates `dijkstraFrom` computation so distance fields are calculated strictly on search open or when the player has displaced $> 0.5$ m from the last origin. Zero distance field recalculation per keystroke or per frame.
+    - **Category Chips (`viewer/src/ui/search_bar.ts`, `poi_overlay.ts`, `minimap.ts`)**:
+      - Extracted at startup from categories in `poi.json` (`chair`, `desk`, `table`, `tape`).
+      - Clicking a chip filters search results and dims non-matching POIs on both 3D pins and the 2D minimap floor plan. Clicking again clears the filter.
+    - **Eased Jump Transitions (`viewer/src/ui/jump_controller.ts`)**:
+      - Smooth ~0.8 s camera move from current position to target anchor using symmetrical cubic ease-in-out (`easeInOutCubic`).
+      - End state: camera yaw faces POI pin position via `computeFacingYaw`, height maintained at 1.45 m, pitch levelled to 0.
+      - Anchor circle collision check: strictly asserts anchor is walkable and passes `isCircleBlocked(r = 0.08 m)` before initiating jump.
+      - Instant cancellation: any keydown or mouse movement cancels the jump immediately, leaving the player at a safe valid position.
+      - Teleport reset: invokes `controls.teleportTo(...)` upon arrival so velocity and head-bob are zeroed without collision tunneling.
+      - Zero per-frame heap allocation: all vectors, Euler angles, and progress variables are pre-allocated and reused.
+    - **Pin & Minimap Pulsing**:
+      - Selecting a search result triggers a 2-second animated pulsing ring on the 3D pin and minimap.
+    - **Performance & F3 Telemetry**:
+      - Baseline telemetry: **144 FPS / 6.9 ms** at spawn `(1.77, 1.45, 3.52)`.
+      - Search bar open: **144 FPS / 7.0 ms** (zero frame drop).
+      - After jump to `"study table"` anchor `(0.45, 1.45, 1.95)`: **144 FPS / 7.0 ms**.
+      - Post-jump player cell: `col = 63, row = 66`, `walkable = 1`, circle test ($r = 0.08$ m) = **PASS** (`blocked = false`).
+    - **Tests & Builds**:
+      - 19 new pure logic tests added to `viewer/test/search_ui.test.ts` (easing, angular wrapping, facing yaw, 0.5m gate, category filtering).
+      - Total Vitest tests: **97 / 97 PASSED** across 5 test suites.
+      - TypeScript compiler: clean (0 errors via `npx tsc --noEmit`).
+      - Production build: `npm run build` PASSED (2.03 s).
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

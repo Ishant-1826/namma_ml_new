@@ -38,6 +38,12 @@ export class POIOverlay {
   private _labelsVisible = true;
   private _authoringActive = false;
   private _selectedPOIId: string | null = null;
+  private _categoryFilter: string | null = null;
+  private _pulsingPOIId: string | null = null;
+  private _pulseStartTime = 0;
+  private _pulseDurationMs = 2000;
+  private readonly _pulseRingMesh: THREE.Mesh;
+  private readonly _pulseRingMaterial: THREE.MeshBasicMaterial;
 
   private readonly renderOrder: number;
   private readonly defaultPinHeightM: number;
@@ -90,6 +96,21 @@ export class POIOverlay {
       opacity: 0.8,
       depthTest: false,
     });
+
+    // Pulsing selection ring on 3D pin (pre-allocated, zero-allocation animation)
+    const ringGeo = new THREE.RingGeometry(0.08, 0.12, 32);
+    ringGeo.rotateX(-Math.PI / 2);
+    this._pulseRingMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00e5ff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+    });
+    this._pulseRingMesh = new THREE.Mesh(ringGeo, this._pulseRingMaterial);
+    this._pulseRingMesh.renderOrder = this.renderOrder + 10;
+    this._pulseRingMesh.visible = false;
+    this.group.add(this._pulseRingMesh);
   }
 
   get labelsVisible(): boolean {
@@ -115,6 +136,16 @@ export class POIOverlay {
     for (const marker of this.markers.values()) {
       this.updateMarkerTexture(marker);
     }
+  }
+
+  pulsePOI(poiId: string, durationMs = 2000): void {
+    this._pulsingPOIId = poiId;
+    this._pulseStartTime = performance.now();
+    this._pulseDurationMs = durationMs;
+  }
+
+  setCategoryFilter(category: string | null): void {
+    this._categoryFilter = category ? category.toLowerCase().trim() : null;
   }
 
   /**
@@ -422,6 +453,14 @@ export class POIOverlay {
         }
       }
 
+      // Dim non-matching POIs when a category filter is active
+      if (this._categoryFilter && alpha > 0.01) {
+        const isMatch = marker.poi.category.toLowerCase().trim() === this._categoryFilter;
+        if (!isMatch) {
+          alpha *= 0.25;
+        }
+      }
+
       marker.material.opacity = alpha;
       marker.sprite.visible = alpha > 0.005;
       marker.stemMesh.visible = alpha > 0.005;
@@ -434,6 +473,28 @@ export class POIOverlay {
       const worldHeight = 2.0 * dist * tanFovHalf * this.screenScale;
       const worldWidth = worldHeight * aspect;
       marker.sprite.scale.set(worldWidth, worldHeight, 1.0);
+    }
+
+    // Update pulsing ring if active
+    if (this._pulsingPOIId) {
+      const now = performance.now();
+      const elapsed = now - this._pulseStartTime;
+      const marker = this.markers.get(this._pulsingPOIId);
+      if (elapsed < this._pulseDurationMs && marker) {
+        const progress = elapsed / this._pulseDurationMs;
+        const scale = 1.0 + progress * 2.5;
+        const opacity = (1.0 - progress) * 0.9;
+        const pinY = marker.poi.height ?? this.defaultPinHeightM;
+        this._pulseRingMesh.position.set(marker.poi.position.x, pinY, marker.poi.position.z);
+        this._pulseRingMesh.scale.set(scale, scale, scale);
+        this._pulseRingMaterial.opacity = opacity;
+        this._pulseRingMesh.visible = true;
+      } else {
+        this._pulsingPOIId = null;
+        this._pulseRingMesh.visible = false;
+      }
+    } else {
+      this._pulseRingMesh.visible = false;
     }
   }
 

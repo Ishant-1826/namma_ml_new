@@ -24,6 +24,10 @@ export class Minimap {
   private _selectedPOIId: string | null = null;
   private _authoringActive = false;
   private _draggedPOI: POI | null = null;
+  private _categoryFilter: string | null = null;
+  private _pulsingPOIId: string | null = null;
+  private _pulseStartTime = 0;
+  private _pulseDurationMs = 2000;
 
   // Interaction callbacks
   public onPOIClick?: (poi: POI, event: PointerEvent) => void;
@@ -99,6 +103,16 @@ export class Minimap {
 
   setSelectedPOI(poiId: string | null): void {
     this._selectedPOIId = poiId;
+  }
+
+  pulsePOI(poiId: string, durationMs = 2000): void {
+    this._pulsingPOIId = poiId;
+    this._pulseStartTime = performance.now();
+    this._pulseDurationMs = durationMs;
+  }
+
+  setCategoryFilter(category: string | null): void {
+    this._categoryFilter = category ? category.toLowerCase().trim() : null;
   }
 
   setAuthoringMode(active: boolean): void {
@@ -256,6 +270,10 @@ export class Minimap {
       const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
       const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
       const isSelected = poi.id === this._selectedPOIId;
+      const isCategoryMatch = !this._categoryFilter || poi.category.toLowerCase().trim() === this._categoryFilter;
+
+      // Dim non-matching POIs
+      ctx.globalAlpha = isCategoryMatch ? 1.0 : 0.25;
 
       // Draw Zone if circular
       if (poi.zone && poi.zone.type === "circle") {
@@ -295,6 +313,25 @@ export class Minimap {
       ctx.lineWidth = isSelected ? 2.0 : 1.2;
       ctx.strokeStyle = "#ffffff";
       ctx.stroke();
+
+      // Draw animated pulsing ring on pin
+      if (poi.id === this._pulsingPOIId) {
+        const elapsed = now - this._pulseStartTime;
+        if (elapsed < this._pulseDurationMs) {
+          const progress = elapsed / this._pulseDurationMs;
+          const pulseRadius = 5.0 + progress * 16.0;
+          const pulseAlpha = (1.0 - progress) * 0.85;
+          ctx.beginPath();
+          ctx.arc(pinPx.px, pinPx.py, pulseRadius, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(0, 229, 255, ${pulseAlpha.toFixed(2)})`;
+          ctx.lineWidth = 2.0;
+          ctx.stroke();
+        } else {
+          this._pulsingPOIId = null;
+        }
+      }
+
+      ctx.globalAlpha = 1.0;
     }
 
     // 3. Map player position (world X, Z) to minimap pixels
