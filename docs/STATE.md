@@ -856,6 +856,56 @@ cd viewer && npm run dev
     - **Periodic Diagnostic Logging (Key O)**: Every 0.5 s while navigating, outputs `[NavDebug]` printing player `x,z`, `yaw`, projected point, distance off path, segment index, next turn vertex, turn angle, distance-along-path, and instruction text.
     - **Vitest Unit Tests (a–e)**: Added 5 comprehensive tests to `viewer/test/navigation_guidance.test.ts` covering facing opposite ("Turn around"), perpendicular orientation across all 4 quadrants, turn distance accuracy within 0.5 m at 5 points, monotonic projection with 0.3 m jitter, and single arrival instruction.
     - **Verifications**: **132 / 132 Vitest tests PASSED**; `tsc --noEmit` clean (0 errors); `npm run build` PASSED (1.97 s); F3 telemetry steady at 144 FPS / 6.9 ms.
+  - **Phase 6: Evaluation, Performance, Regression & Cleanliness** -- COMPLETE (2026-11-25):
+    - **Full Navigation Evaluation (`scripts/eval_navigation.ts`)**:
+      - Evaluated all 72 ordered pairs across the 9 validated POIs.
+      - **100.0% Reachability** (72 / 72 pairs).
+      - **100.00% Collision-Free Rate** across 9,073 discrete samples at 5 cm step ($r = 0.08$ m).
+      - **Dijkstra Optimality Ratio**: Mean = **0.990**, Max = **1.089** ($\le 1.10$ requirement satisfied).
+      - **Straight-Line Ratio**: Mean = **1.17x**, Max = **2.03x**.
+      - **Compute Latency**: Mean = **0.38 ms**, p95 = **1.08 ms**, Max = **1.45 ms** (sub-millisecond average search).
+      - **Expanded Nodes**: Mean = **331**, Max = **1198**.
+    - **Wall Clearance Analysis (Penalty ON vs OFF)**:
+      - Clearance penalty ON (`weight = 0.25`): Mean = **0.317 m**, p10 = **0.200 m**.
+      - Clearance penalty OFF (`weight = 0.0`): Mean = **0.305 m**, p10 = **0.200 m**.
+      - Confirms centring provides $+1.2\text{ cm}$ extra average safety cushion through corridors away from obstacle edges.
+    - **Turn-by-Turn Instruction Quality**:
+      - 0 instructions containing `"0.0 m"`.
+      - Exactly 1 `"Arrive at <name>"` emitted per route.
+      - Instruction counts per route: Min = **3**, Mean = **4.9**, Max = **8**.
+    - **Documentation & Visualizations (`docs/NAV_EVAL.md`)**:
+      - Top 10 longest routes table.
+      - Empty real-world check table for manual tape-measured ground truth verification.
+      - Generated 3 exemplar route top-view maps:
+        - `docs/images/route_long.png` ("door" $\to$ "Last bench", 11.59 m)
+        - `docs/images/route_detour.png` ("black table" $\to$ "Last row middle bench", 7.95 m, ratio 2.03x)
+        - `docs/images/route_short.png` ("measuring tape" $\to$ "study table", 0.92 m)
+    - **Performance & Stress Telemetry (Browser Live)**:
+      - Stress configuration: Route active ($1.8$ m to "door") + Minimap OPEN + Debug Overlay ON (88 nodes) + Search modal OPEN + Jump previously executed.
+      - **Stress F3 Telemetry**: **144 FPS / 7.0 ms** (baseline 144 FPS / 6.9 ms; within 1.5% of baseline).
+      - **Unobscured Telemetry**: **142 FPS / 7.0 ms**.
+      - Zero per-frame heap allocations across all Round 2 render loops.
+    - **Regression Suite (Round 1 & Round 2)**:
+      - WASD + mouse look: PASS (movement & yaw verified).
+      - Collision: PASS (boundary clamping & sliding verified).
+      - Minimap (B): PASS (toggle canvas & state label).
+      - Quality presets (1/2/3): PASS (Low/Med/High DPR & F3 updates).
+      - Reset (R): PASS (spawn return verified).
+      - Explore mode (U): PASS (toggle exploration view).
+      - Search bar (/ and Ctrl+K): PASS (focus & typing isolation).
+      - Hotkey isolation: PASS (typing `wasdrbulp` in search and authoring does not trigger game hotkeys).
+      - Esc dismiss: PASS.
+      - 3D labels (L): PASS.
+      - Authoring (P): PASS.
+      - Auto-walk (G) & clear route (C): PASS.
+    - **Cleanliness & Housekeeping**:
+      - `[NavDebug]` isolated behind explicit `window.__NAV_DEBUG__ === true` flag.
+      - Superseded `scripts/eval_phase5_routes.ts` removed.
+      - TypeScript check (`tsc --noEmit`): 0 errors.
+      - Vitest: **132 / 132 tests PASSED** (949 ms).
+      - Python pytest: **12 / 12 tests PASSED** (test_occupancy, test_align, test_verify_splat).
+      - Production build: `npm run build` PASSED (1.49 s).
+      - `.gitignore` current; 0 large binaries tracked.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

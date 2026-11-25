@@ -357,8 +357,9 @@ export class NavigationController {
       this._precomputedTurns
     );
 
-    // 5b. Periodic Diagnostic Log (behind key O debug overlay, every 0.5s)
-    if (this._state.debugOverlayActive && nowMs - this._lastDebugLogTimeMs >= 500) {
+    // 5b. Periodic Diagnostic Log (behind explicit debug flag window.__NAV_DEBUG__, every 0.5s)
+    const isNavDebugEnabled = typeof window !== "undefined" && (window as any).__NAV_DEBUG__ === true;
+    if (this._state.debugOverlayActive && isNavDebugEnabled && nowMs - this._lastDebugLogTimeMs >= 500) {
       this._lastDebugLogTimeMs = nowMs;
 
       const turns = this._precomputedTurns;
