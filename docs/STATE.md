@@ -868,7 +868,7 @@ cd viewer && npm run dev
     - **Wall Clearance Analysis (Penalty ON vs OFF)**:
       - Clearance penalty ON (`weight = 0.25`): Mean = **0.317 m**, p10 = **0.200 m**.
       - Clearance penalty OFF (`weight = 0.0`): Mean = **0.305 m**, p10 = **0.200 m**.
-      - Confirms centring provides $+1.2\text{ cm}$ extra average safety cushion through corridors away from obstacle edges.
+      - p10 clearance remains unchanged at 0.200 m; mean clearance increases by +1.2 cm; the effect of the clearance penalty is marginal. Routes in both configurations remain collision-free, near-optimal paths.
     - **Turn-by-Turn Instruction Quality**:
       - 0 instructions containing `"0.0 m"`.
       - Exactly 1 `"Arrive at <name>"` emitted per route.
@@ -892,6 +892,7 @@ cd viewer && npm run dev
       - Quality presets (1/2/3): PASS (Low/Med/High DPR & F3 updates).
       - Reset (R): PASS (spawn return verified).
       - Explore mode (U): PASS (toggle exploration view).
+      - Touch controls: Code-level check only, not verified on a real device.
       - Search bar (/ and Ctrl+K): PASS (focus & typing isolation).
       - Hotkey isolation: PASS (typing `wasdrbulp` in search and authoring does not trigger game hotkeys).
       - Esc dismiss: PASS.

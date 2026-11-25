@@ -382,17 +382,17 @@ const navEvalContent = `# Navigation Evaluation Report (Phase 6)
 
 ---
 
-## 2. Wall Clearance Analysis: Centring Penalty ON vs OFF
+## 2. Wall Clearance Analysis: Clearance Penalty ON vs OFF
 
-To evaluate whether centring helps wall clearance, routes were computed with the clearance penalty weight set to $0.25$ (**ON**) and $0.0$ (**OFF**). Wall clearances were evaluated at $5\\text{ cm}$ intervals across all routes:
+To evaluate whether clearance penalty weighting impacts wall clearance, routes were computed with the clearance penalty weight set to $0.25$ (**ON**) and $0.0$ (**OFF**). Wall clearances were evaluated at $5\\text{ cm}$ intervals across all routes:
 
 | Configuration | Mean Wall Clearance | p10 Wall Clearance (Tighter 10%) | Impact |
 |---|---|---|---|
-| **Clearance Penalty OFF** (\`weight = 0.0\`) | **${statsClOff.mean.toFixed(3)} m** | **${statsClOff.p10.toFixed(3)} m** | Baseline hug-corner path |
-| **Clearance Penalty ON** (\`weight = 0.25\`) | **${statsClOn.mean.toFixed(3)} m** | **${statsClOn.p10.toFixed(3)} m** | **+${((statsClOn.p10 - statsClOff.p10) * 100).toFixed(1)} cm (+${(((statsClOn.p10 - statsClOff.p10) / statsClOff.p10) * 100).toFixed(1)}%)** extra safety cushion |
+| **Clearance Penalty OFF** (\`weight = 0.0\`) | **${statsClOff.mean.toFixed(3)} m** | **${statsClOff.p10.toFixed(3)} m** | Baseline |
+| **Clearance Penalty ON** (\`weight = 0.25\`) | **${statsClOn.mean.toFixed(3)} m** | **${statsClOn.p10.toFixed(3)} m** | +1.2 cm (+3.9%) mean clearance |
 
 ### Finding
-Enabling the clearance penalty significantly increases the 10th-percentile (p10) clearance through narrow corridors and doorways without causing paths to exceed the $1.10\\times$ Dijkstra optimum threshold (mean Dijkstra ratio is ${meanDijkstraRatio.toFixed(3)}). Centring successfully steers the player away from table and door rims.
+Mean wall clearance is 0.305 m with the penalty off versus 0.317 m with it on (+1.2 cm); p10 clearance remains unchanged at 0.200 m; the effect of the clearance penalty is marginal. Routes in both configurations remain collision-free, near-optimal paths.
 
 ---
 
@@ -420,17 +420,20 @@ ${longest10
 
 ## 5. Exemplar Route Visualizations
 
-### 1. Long Route: "${longestRoute.fromName}" $\\to$ "${longestRoute.toName}" (${longestRoute.lengthM.toFixed(2)} m)
+### 1. Long Route: door -> Last bench (11.59 m)
 Traverses the full diagonal span of the room around central obstacles.
-![Long Route](images/route_long.png)
 
-### 2. Detour Route: "${detourRoute.fromName}" $\\to$ "${detourRoute.toName}" (${detourRoute.lengthM.toFixed(2)} m, Ratio: ${detourRoute.ratioVsStraight.toFixed(2)}x)
+![Long Route: door -> Last bench](images/route_long.png)
+
+### 2. Detour Route: black table -> Last row middle bench (7.95 m, Ratio: 2.03x)
 Navigates around obstructing tables and stages, demonstrating obstacle-aware detouring.
-![Detour Route](images/route_detour.png)
 
-### 3. Short Route: "${shortestRoute.fromName}" $\\to$ "${shortestRoute.toName}" (${shortestRoute.lengthM.toFixed(2)} m)
+![Detour Route: black table -> Last row middle bench](images/route_detour.png)
+
+### 3. Short Route: measuring tape -> study table (0.92 m)
 Direct corridor navigation between adjacent POIs.
-![Short Route](images/route_short.png)
+
+![Short Route: measuring tape -> study table](images/route_short.png)
 
 ---
 
@@ -445,6 +448,14 @@ Direct corridor navigation between adjacent POIs.
 | | | | |
 | | | | |
 | | | | |
+
+---
+
+## 7. Limitations
+
+1. **Internal Consistency vs Independent Walkability**: The 5 cm collision-free evaluation uses the exact same occupancy circle collision model (\`collision.ts\`, player radius $r = 0.08\\text{ m}$) that the path planner uses. This demonstrates internal mathematical consistency within the digital twin model rather than independent physical walkability.
+2. **Path Ratios Below 1.0 vs Grid Dijkstra Optimum**: Certain smoothed paths achieve a ratio below 1.0 (mean 0.990) relative to the grid Dijkstra optimum because the line-of-sight smoother performs continuous string-pulling shortcuts that cut diagonal corners which the discrete 8-connected grid cannot traverse.
+3. **Physical Real-World Ground Truth**: The manual Real-World Check table (tape measurements) provides the true independent physical validation and must be recorded by hand.
 `;
 
 const navEvalPath = path.resolve(__dirname, "../docs/NAV_EVAL.md");
