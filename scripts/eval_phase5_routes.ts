@@ -75,7 +75,23 @@ for (let i = 0; i < pairs.length; i++) {
   for (let ptIdx = 0; ptIdx < s.points.length; ptIdx++) {
     const pt = s.points[ptIdx];
     projectPlayerOnPath(s.points, pt.x, pt.z, projTemp);
-    const inst = generateInstruction(s.points, projTemp, s.lengthM, poiB.name);
+
+    // For start waypoint, player faces along initial route heading; at final waypoint, emit "Arrive at <name>"
+    let waypointYaw: number | undefined = undefined;
+    if (ptIdx === 0 && s.points.length >= 2) {
+      const segDx = s.points[1].x - s.points[0].x;
+      const segDz = s.points[1].z - s.points[0].z;
+      waypointYaw = Math.atan2(-segDx, -segDz);
+    }
+
+    const isFinalGoal = ptIdx === s.points.length - 1;
+    const inst = generateInstruction(
+      s.points,
+      projTemp,
+      s.lengthM,
+      isFinalGoal ? poiB.name : undefined,
+      waypointYaw
+    );
     const stepDesc = `Waypoint ${ptIdx + 1} (${pt.x.toFixed(2)}, ${pt.z.toFixed(2)}): "${inst.text}" [rem: ${inst.remainingDistanceM.toFixed(1)}m, ETA: ${inst.etaSeconds}s, prog: ${Math.round(inst.progressFraction * 100)}%]`;
     instructions.push(stepDesc);
   }

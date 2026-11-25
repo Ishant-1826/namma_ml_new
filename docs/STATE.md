@@ -845,6 +845,17 @@ cd viewer && npm run dev
       - TypeScript check (`tsc --noEmit`): 0 errors.
       - Production build: `npm run build` PASSED (2.35 s).
       - POI Validator (`scripts/validate_pois.ts`): 9/9 POIs valid, circle-free ($r = 0.08$ m), and 100% reachable.
+  - **Phase 5 Fix: Turn-by-Turn Guidance Direction, Distance & Monotonic Tracking** -- COMPLETE (2026-11-25):
+    - **Initial Heading Orientation Guidance**: First instruction dynamically compares player's camera yaw (`controls.currentYawRad`) against the starting route vector. If angle deviation $> 135^\circ \implies$ `"Turn around"`; if $> 45^\circ \implies$ `"Turn left/right to face the route"`; otherwise (aligned heading $\le 45^\circ$) emits `"Continue N m"` with distance to first turn or destination.
+    - **Signed Turn Angle & Yaw Conventions**: Fully verified against `controls.ts` (North is $-Z$, forward is $(-\sin(\text{yaw}), -\cos(\text{yaw}))$, positive yaw turns left towards $-X$, negative yaw turns right towards $+X$).
+    - **Along-Path Turn Tracking with Hysteresis**: Evaluates distance along path strictly from projected player position. Active turn index advances only when player along-path distance exceeds the turn vertex by $\ge 0.3$ m, eliminating threshold flip.
+    - **Distance Clamping & Immediate Turn Thresholds**: Distance to turn is calculated as `alongPathM - distAlongM` rounded to 0.5 m. Under 1.0 m, emits `"Turn left/right now"`. Elimination of any `"0.0 m"` strings.
+    - **Monotonic Path Projection**: `projectPlayerOnPath` restricts segment search to $i \ge \max(0, \text{lastSegmentIndex} - 1)$, ensuring segment index never drops by more than 1 segment under lateral player jitter ($\pm 0.3$ m).
+    - **Consecutive Turn Merging**: `extractTurnEvents` merges adjacent small bends ($< 1.5$ m apart) turning in the same direction into a single composite turn event, preventing repetitive rapid-fire turn announcements.
+    - **Single Arrival Instruction**: Final approach displays countdowns (`"Arrive in 1.0 m"`, `"Arrive in 0.5 m"`) and emits exactly one `"Arrive at <name>"` when distance to anchor is $\le 0.6$ m.
+    - **Periodic Diagnostic Logging (Key O)**: Every 0.5 s while navigating, outputs `[NavDebug]` printing player `x,z`, `yaw`, projected point, distance off path, segment index, next turn vertex, turn angle, distance-along-path, and instruction text.
+    - **Vitest Unit Tests (a–e)**: Added 5 comprehensive tests to `viewer/test/navigation_guidance.test.ts` covering facing opposite ("Turn around"), perpendicular orientation across all 4 quadrants, turn distance accuracy within 0.5 m at 5 points, monotonic projection with 0.3 m jitter, and single arrival instruction.
+    - **Verifications**: **132 / 132 Vitest tests PASSED**; `tsc --noEmit` clean (0 errors); `npm run build` PASSED (1.97 s); F3 telemetry steady at 144 FPS / 6.9 ms.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics

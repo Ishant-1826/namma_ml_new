@@ -375,4 +375,176 @@ describe("Phase 5 Navigation Guidance Pure Logic", () => {
       expect(inst.text).toBe("Arrive at Bench");
     });
   });
+
+  describe("6. Phase 5 Fix: Turn-by-Turn Guidance Requirements (a - e)", () => {
+    // (a) player facing opposite the route gets "Turn around"
+    it("(a) player facing opposite the route gets 'Turn around'", () => {
+      // Route going North (0, -1): (0, 0) -> (0, -10). Route yaw = 0.
+      // Player facing South (0, 1): yaw = Math.PI (180 deg opposite).
+      const points: NavGridPoint[] = [
+        { x: 0, z: 0 },
+        { x: 0, z: -10 },
+      ];
+      const proj = projectPlayerOnPath(points, 0, 0);
+      const inst = generateInstruction(points, proj, 10, "Door", Math.PI);
+      expect(inst.type).toBe("turn-around");
+      expect(inst.text).toBe("Turn around");
+    });
+
+    // (b) player facing perpendicular gets the correct left/right for all four yaw quadrants
+    it("(b) player facing perpendicular gets the correct left/right for all four yaw quadrants", () => {
+      // Quadrant 1: Route North: (0, 0) -> (0, -10). Route yaw = 0.
+      const routeNorth: NavGridPoint[] = [{ x: 0, z: 0 }, { x: 0, z: -10 }];
+      const projN = projectPlayerOnPath(routeNorth, 0, 0);
+      // Facing East (-pi/2) -> route is to the left -> Turn left to face the route
+      const instN_East = generateInstruction(routeNorth, projN, 10, "Target", -Math.PI / 2);
+      expect(instN_East.type).toBe("turn-face");
+      expect(instN_East.text).toBe("Turn left to face the route");
+      // Facing West (+pi/2) -> route is to the right -> Turn right to face the route
+      const instN_West = generateInstruction(routeNorth, projN, 10, "Target", Math.PI / 2);
+      expect(instN_West.type).toBe("turn-face");
+      expect(instN_West.text).toBe("Turn right to face the route");
+
+      // Quadrant 2: Route South: (0, 0) -> (0, 10). Route yaw = pi.
+      const routeSouth: NavGridPoint[] = [{ x: 0, z: 0 }, { x: 0, z: 10 }];
+      const projS = projectPlayerOnPath(routeSouth, 0, 0);
+      // Facing East (-pi/2) -> route is to the right -> Turn right to face the route
+      const instS_East = generateInstruction(routeSouth, projS, 10, "Target", -Math.PI / 2);
+      expect(instS_East.type).toBe("turn-face");
+      expect(instS_East.text).toBe("Turn right to face the route");
+      // Facing West (+pi/2) -> route is to the left -> Turn left to face the route
+      const instS_West = generateInstruction(routeSouth, projS, 10, "Target", Math.PI / 2);
+      expect(instS_West.type).toBe("turn-face");
+      expect(instS_West.text).toBe("Turn left to face the route");
+
+      // Quadrant 3: Route East: (0, 0) -> (10, 0). Route yaw = -pi/2.
+      const routeEast: NavGridPoint[] = [{ x: 0, z: 0 }, { x: 10, z: 0 }];
+      const projE = projectPlayerOnPath(routeEast, 0, 0);
+      // Facing North (0) -> route is to the right -> Turn right to face the route
+      const instE_North = generateInstruction(routeEast, projE, 10, "Target", 0);
+      expect(instE_North.type).toBe("turn-face");
+      expect(instE_North.text).toBe("Turn right to face the route");
+      // Facing South (pi) -> route is to the left -> Turn left to face the route
+      const instE_South = generateInstruction(routeEast, projE, 10, "Target", Math.PI);
+      expect(instE_South.type).toBe("turn-face");
+      expect(instE_South.text).toBe("Turn left to face the route");
+
+      // Quadrant 4: Route West: (0, 0) -> (-10, 0). Route yaw = +pi/2.
+      const routeWest: NavGridPoint[] = [{ x: 0, z: 0 }, { x: -10, z: 0 }];
+      const projW = projectPlayerOnPath(routeWest, 0, 0);
+      // Facing North (0) -> route is to the left -> Turn left to face the route
+      const instW_North = generateInstruction(routeWest, projW, 10, "Target", 0);
+      expect(instW_North.type).toBe("turn-face");
+      expect(instW_North.text).toBe("Turn left to face the route");
+      // Facing South (pi) -> route is to the right -> Turn right to face the route
+      const instW_South = generateInstruction(routeWest, projW, 10, "Target", Math.PI);
+      expect(instW_South.type).toBe("turn-face");
+      expect(instW_South.text).toBe("Turn right to face the route");
+
+      // Facing aligned (diff <= 45 deg) -> Continue N m
+      const instAligned = generateInstruction(routeNorth, projN, 10, "Target", 0);
+      expect(instAligned.type).toBe("continue");
+      expect(instAligned.text).toMatch(/^Continue \d+(\.\d)? m$/);
+    });
+
+    // (c) turn distance equals the along-path distance from the projected position, within 0.5 m, at 5 points along a real route
+    it("(c) turn distance equals along-path distance from projected position within 0.5 m at 5 points", () => {
+      // Route: (0, 0) -> (0, -10) -> (10, -10). Turn vertex at (0, -10), along-path distance = 10.0 m.
+      const points: NavGridPoint[] = [
+        { x: 0, z: 0 },
+        { x: 0, z: -10 },
+        { x: 10, z: -10 },
+      ];
+      const totalLen = 20.0;
+      const testZPositions = [-2.0, -4.2, -6.5, -7.8, -8.7];
+
+      for (const z of testZPositions) {
+        const proj = projectPlayerOnPath(points, 0, z);
+        const inst = generateInstruction(points, proj, totalLen, "Bench");
+        const trueDistToTurn = 10.0 - proj.distanceAlongPathM;
+
+        expect(Math.abs(inst.distanceToEventM - trueDistToTurn)).toBeLessThanOrEqual(0.01);
+
+        // Parsed distance from instruction text ("Turn ... in N m")
+        const match = inst.text.match(/in (\d+(\.\d)?) m/);
+        expect(match).not.toBeNull();
+        if (match) {
+          const textDistM = parseFloat(match[1]);
+          expect(Math.abs(textDistM - trueDistToTurn)).toBeLessThanOrEqual(0.5);
+        }
+      }
+    });
+
+    // (d) projection index never decreases by more than 1 as the player jitters 0.3 m off path
+    it("(d) projection index never decreases by more than 1 as the player jitters 0.3 m off path", () => {
+      const points: NavGridPoint[] = [
+        { x: 0, z: 0 },
+        { x: 0, z: -5 },
+        { x: 5, z: -5 },
+        { x: 5, z: -10 },
+        { x: 10, z: -10 },
+      ];
+      // Player is initially on segment 2: (5, -5) -> (5, -10)
+      let lastSegIdx = 2;
+      const projOut: PathProjection = {
+        nearestPoint: { x: 0, z: 0 },
+        distanceOffPathM: 0,
+        segmentIndex: 0,
+        segmentT: 0,
+        distanceAlongPathM: 0,
+        remainingDistanceM: 0,
+      };
+
+      const jitterOffsets = [
+        { dx: 0.3, dz: 0.0 },
+        { dx: -0.3, dz: 0.1 },
+        { dx: 0.0, dz: -0.3 },
+        { dx: -0.25, dz: -0.25 },
+        { dx: 0.3, dz: 0.3 },
+        { dx: -4.5, dz: 2.0 }, // Large jump back towards segment 0
+      ];
+
+      for (const offset of jitterOffsets) {
+        // Player near (5, -7) + offset
+        const px = 5.0 + offset.dx;
+        const pz = -7.0 + offset.dz;
+        projectPlayerOnPath(points, px, pz, projOut, lastSegIdx);
+
+        // Even with huge backward offset, monotonic constraint ensures segmentIndex >= lastSegIdx - 1
+        expect(projOut.segmentIndex).toBeGreaterThanOrEqual(lastSegIdx - 1);
+        lastSegIdx = projOut.segmentIndex;
+      }
+    });
+
+    // (e) single arrival instruction
+    it("(e) emits exactly one arrival instruction format 'Arrive at <name>' at <= 0.6 m", () => {
+      const points: NavGridPoint[] = [
+        { x: 0, z: 0 },
+        { x: 10, z: 0 },
+      ];
+      const totalLen = 10.0;
+      const targetName = "Library Door";
+
+      // Distances from anchor (10.0, 0.0)
+      const distances = [2.0, 1.0, 0.8, 0.6, 0.4, 0.1, 0.0];
+
+      for (const remDist of distances) {
+        const px = 10.0 - remDist;
+        const proj = projectPlayerOnPath(points, px, 0);
+        const inst = generateInstruction(points, proj, totalLen, targetName);
+
+        // Never emit "0.0 m"
+        expect(inst.text).not.toContain("0.0 m");
+
+        if (remDist > 0.6) {
+          expect(inst.type).toBe("arrive");
+          expect(inst.text).toMatch(/^Arrive in \d+(\.\d)? m$/);
+        } else {
+          // Exactly one arrival text at <= 0.6 m
+          expect(inst.type).toBe("arrive");
+          expect(inst.text).toBe(`Arrive at ${targetName}`);
+        }
+      }
+    });
+  });
 });

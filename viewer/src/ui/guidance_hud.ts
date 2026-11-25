@@ -227,9 +227,14 @@ export class GuidanceHUD {
     switch (type) {
       case "continue":
         return "⬆️";
+      case "turn-face":
+      case "turn-around":
+        return "🔄";
       case "turn-left":
+      case "turn-left-now":
         return "↖️";
       case "turn-right":
+      case "turn-right-now":
         return "↗️";
       case "turn-sharp-left":
         return "⬅️";

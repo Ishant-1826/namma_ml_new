@@ -28,8 +28,11 @@ import {
 import {
   PathProjection,
   NavigationInstruction,
+  TurnEvent,
+  GuidanceStateTracker,
   projectPlayerOnPath,
   generateInstruction,
+  extractTurnEvents,
   WALK_SPEED_MPS,
 } from "../nav/instructions";
 import { RouteRenderer } from "./route_renderer";
@@ -70,6 +73,13 @@ export class NavigationController {
   };
 
   private _autoWalkDistAlongM = 0;
+  private _lastSegIdx = 0;
+  private _lastDebugLogTimeMs = 0;
+  private _precomputedTurns: TurnEvent[] = [];
+  private readonly _guidanceTracker: GuidanceStateTracker = {
+    activeTurnIndex: 0,
+    initialHeadingResolved: false,
+  };
 
   constructor(config: NavigationControllerConfig) {
     this.config = config;
@@ -139,8 +149,15 @@ export class NavigationController {
       success.exploredCells
     );
 
-    // Initial projection
-    projectPlayerOnPath(success.points, cam.position.x, cam.position.z, this._projTemp);
+    // Reset monotonic tracker & precompute turns
+    this._lastSegIdx = 0;
+    this._guidanceTracker.activeTurnIndex = 0;
+    this._guidanceTracker.initialHeadingResolved = false;
+    this._precomputedTurns = extractTurnEvents(success.points);
+
+    // Initial monotonic projection
+    projectPlayerOnPath(success.points, cam.position.x, cam.position.z, this._projTemp, this._lastSegIdx);
+    this._lastSegIdx = this._projTemp.segmentIndex;
     this._autoWalkDistAlongM = this._projTemp.distanceAlongPathM;
 
     // Update 3D route chevrons & vertical beacon
@@ -163,7 +180,10 @@ export class NavigationController {
       this._projTemp,
       success.lengthM,
       targetPOI.name,
-      this._instTemp
+      this.config.controls.currentYawRad,
+      this._instTemp,
+      this._guidanceTracker,
+      this._precomputedTurns
     );
     this.config.guidanceHUD.update(this._state, this._instTemp);
 
@@ -184,6 +204,11 @@ export class NavigationController {
 
     this.cancelAutoWalk("route cleared");
     this._state = clearActiveRoute(this._state);
+
+    this._lastSegIdx = 0;
+    this._precomputedTurns = [];
+    this._guidanceTracker.activeTurnIndex = 0;
+    this._guidanceTracker.initialHeadingResolved = false;
 
     this.config.routeRenderer.clear();
     this.config.minimap.setRoute(null, null);
@@ -293,8 +318,9 @@ export class NavigationController {
       this.stepAutoWalk(dt, nowMs);
     }
 
-    // 2. Project player position onto path without heap allocation
-    projectPlayerOnPath(path, cam.position.x, cam.position.z, this._projTemp);
+    // 2. Project player position onto path with monotonic progression
+    projectPlayerOnPath(path, cam.position.x, cam.position.z, this._projTemp, this._lastSegIdx);
+    this._lastSegIdx = this._projTemp.segmentIndex;
 
     // 3. Arrival Check (<= 0.6 m from destination anchor)
     const distToAnchor = Math.hypot(
@@ -319,14 +345,41 @@ export class NavigationController {
       }
     }
 
-    // 5. Update guidance instructions
+    // 5. Update guidance instructions (relative heading, along-path turn tracking, hysteresis)
     generateInstruction(
       path,
       this._projTemp,
       this._state.totalLengthM,
       targetPOI.name,
-      this._instTemp
+      this.config.controls.currentYawRad,
+      this._instTemp,
+      this._guidanceTracker,
+      this._precomputedTurns
     );
+
+    // 5b. Periodic Diagnostic Log (behind key O debug overlay, every 0.5s)
+    if (this._state.debugOverlayActive && nowMs - this._lastDebugLogTimeMs >= 500) {
+      this._lastDebugLogTimeMs = nowMs;
+
+      const turns = this._precomputedTurns;
+      const activeIdx = this._guidanceTracker.activeTurnIndex;
+      const activeTurn = activeIdx < turns.length ? turns[activeIdx] : null;
+
+      const turnPtStr = activeTurn
+        ? `(${activeTurn.point.x.toFixed(2)}, ${activeTurn.point.z.toFixed(2)})`
+        : "(none)";
+      const angleStr = activeTurn
+        ? `${activeTurn.angleDeg.toFixed(1)}° (${activeTurn.isLeft ? "left" : "right"})`
+        : "0.0° (none)";
+      const distAlongTurnStr = activeTurn ? `${activeTurn.alongPathM.toFixed(2)}m` : "0.00m";
+
+      console.log(
+        `[NavDebug] player=(${cam.position.x.toFixed(2)}, ${cam.position.z.toFixed(2)}) yaw=${this.config.controls.currentYawDeg.toFixed(1)}° | ` +
+        `proj=(${this._projTemp.nearestPoint.x.toFixed(2)}, ${this._projTemp.nearestPoint.z.toFixed(2)}) offPath=${this._projTemp.distanceOffPathM.toFixed(2)}m segIdx=${this._projTemp.segmentIndex} | ` +
+        `nextTurn=${turnPtStr} angle=${angleStr} distAlong=${distAlongTurnStr} | ` +
+        `text="${this._instTemp.text}"`
+      );
+    }
 
     // 6. Update 3D floor route renderer (chevrons distance fade & beacon spin)
     this.config.routeRenderer.update(this._projTemp.distanceAlongPathM, nowMs);
@@ -374,6 +427,10 @@ export class NavigationController {
       s.rawPoints,
       s.exploredCells
     );
+
+    this._lastSegIdx = 0;
+    this._guidanceTracker.activeTurnIndex = 0;
+    this._precomputedTurns = extractTurnEvents(s.points);
 
     this.config.routeRenderer.setRoute(s.points, targetPOI.anchor);
     this.config.minimap.setRoute(s.points, targetPOI.anchor);
