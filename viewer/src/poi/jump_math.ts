@@ -4,7 +4,7 @@
  * Zero Three.js and Zero DOM dependencies.
  */
 
-import { POI } from "./poi_types";
+import { POI, normalizeCategory } from "./poi_types";
 import { NavGrid } from "../nav/navgrid";
 
 /**
@@ -107,8 +107,9 @@ export class DistanceFieldGate {
 export function extractCategories(pois: POI[]): string[] {
   const set = new Set<string>();
   for (const p of pois) {
-    if (p.category && p.category.trim()) {
-      set.add(p.category.trim());
+    const cat = normalizeCategory(p.category);
+    if (cat) {
+      set.add(cat);
     }
   }
   return Array.from(set).sort((a, b) => a.localeCompare(b));
@@ -129,10 +130,10 @@ export function filterPOIsByCategory(
   distanceField?: Float32Array | null,
   grid?: NavGrid
 ): CategorizedPOIItem[] {
-  const targetCategory = category ? category.toLowerCase().trim() : null;
+  const targetCategory = normalizeCategory(category);
 
   const matched = targetCategory
-    ? pois.filter((p) => p.category.toLowerCase().trim() === targetCategory)
+    ? pois.filter((p) => normalizeCategory(p.category) === targetCategory)
     : pois.slice();
 
   const items: CategorizedPOIItem[] = matched.map((poi) => {
@@ -164,3 +165,51 @@ export function filterPOIsByCategory(
 
   return items;
 }
+
+export type POIHighlightState = "selected" | "match" | "dimmed" | "normal";
+
+/**
+ * Returns the effective category filter:
+ * 1. If an explicit chip category is active, return that.
+ * 2. Else if a POI is selected, return the selected POI's category (so its group highlights in blue).
+ * 3. Else return null.
+ */
+export function getEffectiveCategory(
+  activeCategory: string | null | undefined,
+  selectedPOIId: string | null | undefined,
+  allPOIs: POI[]
+): string | null {
+  const explicit = normalizeCategory(activeCategory);
+  if (explicit) return explicit;
+  if (selectedPOIId && allPOIs) {
+    const sel = allPOIs.find((p) => p.id === selectedPOIId);
+    if (sel) {
+      const cat = normalizeCategory(sel.category);
+      if (cat) return cat;
+    }
+  }
+  return null;
+}
+
+/**
+ * Computes the highlight state for a POI:
+ * - "selected": if poi.id === selectedPOIId (green wins over match).
+ * - "match": if effectiveCategory is set and normalizeCategory(poi.category) === effectiveCategory.
+ * - "dimmed": if effectiveCategory is set and normalizeCategory(poi.category) !== effectiveCategory.
+ * - "normal": if no effectiveCategory is active and poi is not selected.
+ */
+export function getPOIHighlightState(
+  poi: POI,
+  selectedPOIId: string | null | undefined,
+  effectiveCategory: string | null | undefined
+): POIHighlightState {
+  if (selectedPOIId && poi.id === selectedPOIId) {
+    return "selected";
+  }
+  const normCat = normalizeCategory(effectiveCategory);
+  if (normCat) {
+    return normalizeCategory(poi.category) === normCat ? "match" : "dimmed";
+  }
+  return "normal";
+}
+

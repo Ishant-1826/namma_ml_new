@@ -8,7 +8,8 @@
  */
 
 import { OccupancyGrid } from "./collision";
-import { POI } from "./poi/poi_types";
+import { POI, normalizeCategory } from "./poi/poi_types";
+import { getEffectiveCategory, getPOIHighlightState } from "./poi/jump_math";
 
 export class Minimap {
   readonly container: HTMLElement;
@@ -112,7 +113,8 @@ export class Minimap {
   }
 
   setCategoryFilter(category: string | null): void {
-    this._categoryFilter = category ? category.toLowerCase().trim() : null;
+    const norm = normalizeCategory(category);
+    this._categoryFilter = norm || null;
   }
 
   setAuthoringMode(active: boolean): void {
@@ -262,22 +264,36 @@ export class Minimap {
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(this._offscreenCanvas, 0, 0, w, h);
 
-    // 2. Draw POIs (Zones, Anchors, Pins)
+    // 2. Partition POIs into render layers so highlighted / selected markers are drawn LAST
+    const effectiveCategory = getEffectiveCategory(
+      this._categoryFilter,
+      this._selectedPOIId,
+      this._pois
+    );
+
+    const basePOIs: POI[] = [];
+    const matchPOIs: POI[] = [];
+    let selectedPOI: POI | null = null;
+
     for (const poi of this._pois) {
+      const state = getPOIHighlightState(poi, this._selectedPOIId, effectiveCategory);
+      if (state === "selected") {
+        selectedPOI = poi;
+      } else if (state === "match") {
+        matchPOIs.push(poi);
+      } else {
+        basePOIs.push(poi);
+      }
+    }
+
+    // Helper: draw pin base elements (zone, displacement line, anchor)
+    const drawBaseElements = (poi: POI, isWarning: boolean) => {
       const pinPx = this.worldToPixel(poi.position.x, poi.position.z);
       const anchorPx = this.worldToPixel(poi.anchor.x, poi.anchor.z);
 
-      const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
-      const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
-      const isSelected = poi.id === this._selectedPOIId;
-      const isCategoryMatch = !this._categoryFilter || poi.category.toLowerCase().trim() === this._categoryFilter;
-
-      // Dim non-matching POIs
-      ctx.globalAlpha = isCategoryMatch ? 1.0 : 0.25;
-
       // Draw Zone if circular
       if (poi.zone && poi.zone.type === "circle") {
-        const zoneRadiusPx = (poi.zone.radius / (this._grid.width * this._grid.cell_size)) * w;
+        const zoneRadiusPx = (poi.zone.radius / (this._grid!.width * this._grid!.cell_size)) * w;
         ctx.beginPath();
         ctx.arc(pinPx.px, pinPx.py, zoneRadiusPx, 0, Math.PI * 2);
         ctx.fillStyle = isWarning ? "rgba(239, 68, 68, 0.15)" : "rgba(0, 229, 255, 0.15)";
@@ -304,35 +320,129 @@ export class Minimap {
       ctx.arc(anchorPx.px, anchorPx.py, 2.5, 0, Math.PI * 2);
       ctx.fillStyle = isWarning ? "#ef4444" : "#38ef7d";
       ctx.fill();
+    };
 
-      // Draw Pin marker
+    // Layer 1: Normal and Dimmed POIs (drawn first at bottom)
+    for (const poi of basePOIs) {
+      const pinPx = this.worldToPixel(poi.position.x, poi.position.z);
+      const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
+      const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
+
+      ctx.globalAlpha = effectiveCategory ? 0.30 : 1.0;
+      drawBaseElements(poi, isWarning);
+
+      // Default Pin Marker
       ctx.beginPath();
-      ctx.arc(pinPx.px, pinPx.py, isSelected ? 6.5 : 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = isWarning ? "#ef4444" : isSelected ? "#38ef7d" : "#00e5ff";
+      ctx.arc(pinPx.px, pinPx.py, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle = isWarning ? "#ef4444" : "#00e5ff";
       ctx.fill();
-      ctx.lineWidth = isSelected ? 2.0 : 1.2;
+      ctx.lineWidth = 1.2;
       ctx.strokeStyle = "#ffffff";
       ctx.stroke();
+    }
 
-      // Draw animated pulsing ring on pin
+    // Layer 2: Same-Category Matches (drawn over base layer)
+    // Dark blue marker (#1d4ed8 core) with a strong outer glow (bright blue #60a5fa halo, shadowBlur ~14 px),
+    // thin white 1 px rim for contrast, radius ~8.5 px
+    for (const poi of matchPOIs) {
+      const pinPx = this.worldToPixel(poi.position.x, poi.position.z);
+      const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
+      const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
+
+      ctx.globalAlpha = 1.0;
+      drawBaseElements(poi, isWarning);
+
+      ctx.save();
+      ctx.shadowColor = "#60a5fa";
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(pinPx.px, pinPx.py, 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#1d4ed8";
+      ctx.fill();
+      ctx.lineWidth = 1.0;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.restore();
+
+      // Full-size label on matching pins on the minimap
+      ctx.font = "bold 9px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const labelText = poi.name;
+      const textWidth = ctx.measureText(labelText).width;
+
+      ctx.fillStyle = "rgba(15, 23, 42, 0.90)";
+      ctx.beginPath();
+      ctx.roundRect(pinPx.px + 12, pinPx.py - 7, textWidth + 8, 14, 3);
+      ctx.fill();
+      ctx.strokeStyle = "#60a5fa";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(labelText, pinPx.px + 16, pinPx.py);
+    }
+
+    // Layer 3: Currently Selected POI (drawn LAST on top of everything)
+    // GREEN (#22c55e core, same glow style in green, radius ~8.5 px, thin white 1 px rim)
+    if (selectedPOI) {
+      const poi = selectedPOI;
+      const pinPx = this.worldToPixel(poi.position.x, poi.position.z);
+      const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
+      const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
+
+      ctx.globalAlpha = 1.0;
+      drawBaseElements(poi, isWarning);
+
+      ctx.save();
+      ctx.shadowColor = "#4ade80";
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(pinPx.px, pinPx.py, 8.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#22c55e";
+      ctx.fill();
+      ctx.lineWidth = 1.0;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+      ctx.restore();
+
+      // Label badge
+      ctx.font = "bold 9px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const labelText = poi.name;
+      const textWidth = ctx.measureText(labelText).width;
+
+      ctx.fillStyle = "rgba(11, 28, 18, 0.92)";
+      ctx.beginPath();
+      ctx.roundRect(pinPx.px + 12, pinPx.py - 7, textWidth + 8, 14, 3);
+      ctx.fill();
+      ctx.strokeStyle = "#22c55e";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(labelText, pinPx.px + 16, pinPx.py);
+
+      // Draw animated pulsing ring on pin if active
       if (poi.id === this._pulsingPOIId) {
         const elapsed = now - this._pulseStartTime;
         if (elapsed < this._pulseDurationMs) {
           const progress = elapsed / this._pulseDurationMs;
-          const pulseRadius = 5.0 + progress * 16.0;
+          const pulseRadius = 8.5 + progress * 16.0;
           const pulseAlpha = (1.0 - progress) * 0.85;
           ctx.beginPath();
           ctx.arc(pinPx.px, pinPx.py, pulseRadius, 0, Math.PI * 2);
-          ctx.strokeStyle = `rgba(0, 229, 255, ${pulseAlpha.toFixed(2)})`;
+          ctx.strokeStyle = `rgba(74, 222, 128, ${pulseAlpha.toFixed(2)})`;
           ctx.lineWidth = 2.0;
           ctx.stroke();
         } else {
           this._pulsingPOIId = null;
         }
       }
-
-      ctx.globalAlpha = 1.0;
     }
+
+    ctx.globalAlpha = 1.0;
 
     // 3. Map player position (world X, Z) to minimap pixels
     const playerPixel = this.worldToPixel(playerX, playerZ);

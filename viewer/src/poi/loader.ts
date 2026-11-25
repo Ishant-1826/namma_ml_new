@@ -6,7 +6,7 @@
  */
 
 import { NavGrid } from "../nav/navgrid";
-import { POI, POIZone, POISceneFile, RawPOI } from "./poi_types";
+import { POI, POIZone, POISceneFile, RawPOI, normalizeCategory } from "./poi_types";
 
 export interface LoadPOIsResult {
   pois: POI[];
@@ -153,7 +153,7 @@ export function loadPOIs(
 
     // 3. Category
     const category = typeof r.category === "string" && r.category.trim() !== ""
-      ? r.category.trim()
+      ? normalizeCategory(r.category)
       : "general";
 
     // 4. Position & Bounds check

@@ -7,6 +7,8 @@ import {
   DistanceFieldGate,
   extractCategories,
   filterPOIsByCategory,
+  getEffectiveCategory,
+  getPOIHighlightState,
 } from "../src/poi/jump_math";
 import { POI } from "../src/poi/poi_types";
 
@@ -177,6 +179,154 @@ describe("Phase 4 Pure Math & Search Helpers (jump_math.ts)", () => {
     it("returns all when category is null", () => {
       const all = filterPOIsByCategory(mockPOIs, null);
       expect(all.length).toBe(4);
+    });
+
+    it("filters exactly 3 POIs of matching category out of 5 with case and whitespace insensitivity", () => {
+      const fixturePOIs: POI[] = [
+        {
+          id: "poi_table_1",
+          name: "Study Table",
+          category: " Table ",
+          aliases: [],
+          tags: [],
+          position: { x: 1, z: 1 },
+          anchor: { x: 1, z: 1 },
+        },
+        {
+          id: "poi_table_2",
+          name: "Black Table",
+          category: "TABLE",
+          aliases: [],
+          tags: [],
+          position: { x: 2, z: 2 },
+          anchor: { x: 2, z: 2 },
+        },
+        {
+          id: "poi_table_3",
+          name: "Dining Table",
+          category: "table",
+          aliases: [],
+          tags: [],
+          position: { x: 3, z: 3 },
+          anchor: { x: 3, z: 3 },
+        },
+        {
+          id: "poi_chair_1",
+          name: "Office Chair",
+          category: " Chair ",
+          aliases: [],
+          tags: [],
+          position: { x: 4, z: 4 },
+          anchor: { x: 4, z: 4 },
+        },
+        {
+          id: "poi_chair_2",
+          name: "Arm Chair",
+          category: "CHAIR",
+          aliases: [],
+          tags: [],
+          position: { x: 5, z: 5 },
+          anchor: { x: 5, z: 5 },
+        },
+      ];
+
+      // Query with mixed case and extra whitespace
+      const resultsWithWhitespace = filterPOIsByCategory(fixturePOIs, "  tAbLe  ");
+      expect(resultsWithWhitespace.length).toBe(3);
+      expect(resultsWithWhitespace.map((r) => r.poi.id).sort()).toEqual([
+        "poi_table_1",
+        "poi_table_2",
+        "poi_table_3",
+      ]);
+
+      // Query with uppercase
+      const resultsUppercase = filterPOIsByCategory(fixturePOIs, "TABLE");
+      expect(resultsUppercase.length).toBe(3);
+      expect(resultsUppercase.map((r) => r.poi.id).sort()).toEqual([
+        "poi_table_1",
+        "poi_table_2",
+        "poi_table_3",
+      ]);
+
+      // Filter for chair returns exactly the 2 chairs
+      const chairResults = filterPOIsByCategory(fixturePOIs, "chair");
+      expect(chairResults.length).toBe(2);
+      expect(chairResults.map((r) => r.poi.id).sort()).toEqual([
+        "poi_chair_1",
+        "poi_chair_2",
+      ]);
+    });
+  });
+
+  describe("6. getPOIHighlightState & getEffectiveCategory", () => {
+    const fixture: POI[] = [
+      {
+        id: "poi_1",
+        name: "Study Table",
+        category: " Table ",
+        aliases: [],
+        tags: [],
+        position: { x: 1, z: 1 },
+        anchor: { x: 1, z: 1 },
+      },
+      {
+        id: "poi_2",
+        name: "Black Table",
+        category: "TABLE",
+        aliases: [],
+        tags: [],
+        position: { x: 2, z: 2 },
+        anchor: { x: 2, z: 2 },
+      },
+      {
+        id: "poi_3",
+        name: "Office Chair",
+        category: "Chair",
+        aliases: [],
+        tags: [],
+        position: { x: 3, z: 3 },
+        anchor: { x: 3, z: 3 },
+      },
+    ];
+
+    it("returns expected highlight state for 2 matching POIs, 1 other, and 1 selected id (case/whitespace-insensitive)", () => {
+      // poi_1 is selected (category: ' Table ')
+      const selectedId = "poi_1";
+      const effectiveCategory = getEffectiveCategory(null, selectedId, fixture);
+      expect(effectiveCategory).toBe("table");
+
+      expect(getPOIHighlightState(fixture[0], selectedId, effectiveCategory)).toBe("selected");
+      expect(getPOIHighlightState(fixture[1], selectedId, effectiveCategory)).toBe("match");
+      expect(getPOIHighlightState(fixture[2], selectedId, effectiveCategory)).toBe("dimmed");
+    });
+
+    it("returns expected highlight state when an explicit category chip is active", () => {
+      // Active chip is '  tAbLe  ' with no selection
+      const effectiveCategory = getEffectiveCategory("  tAbLe  ", null, fixture);
+      expect(effectiveCategory).toBe("table");
+
+      expect(getPOIHighlightState(fixture[0], null, effectiveCategory)).toBe("match");
+      expect(getPOIHighlightState(fixture[1], null, effectiveCategory)).toBe("match");
+      expect(getPOIHighlightState(fixture[2], null, effectiveCategory)).toBe("dimmed");
+    });
+
+    it("selected green wins over category match if both apply", () => {
+      // Both active chip 'table' and poi_2 is selected
+      const selectedId = "poi_2";
+      const effectiveCategory = getEffectiveCategory("table", selectedId, fixture);
+
+      expect(getPOIHighlightState(fixture[0], selectedId, effectiveCategory)).toBe("match");
+      expect(getPOIHighlightState(fixture[1], selectedId, effectiveCategory)).toBe("selected");
+      expect(getPOIHighlightState(fixture[2], selectedId, effectiveCategory)).toBe("dimmed");
+    });
+
+    it("returns normal for all POIs when neither a chip nor a selection is active", () => {
+      const effectiveCategory = getEffectiveCategory(null, null, fixture);
+      expect(effectiveCategory).toBeNull();
+
+      expect(getPOIHighlightState(fixture[0], null, effectiveCategory)).toBe("normal");
+      expect(getPOIHighlightState(fixture[1], null, effectiveCategory)).toBe("normal");
+      expect(getPOIHighlightState(fixture[2], null, effectiveCategory)).toBe("normal");
     });
   });
 });

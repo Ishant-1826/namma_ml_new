@@ -10,8 +10,13 @@
  */
 
 import * as THREE from "three";
-import { POI } from "../poi/poi_types";
+import { POI, normalizeCategory } from "../poi/poi_types";
 import { SpatialIndex } from "../poi/spatial_index";
+import {
+  getEffectiveCategory,
+  getPOIHighlightState,
+  POIHighlightState,
+} from "../poi/jump_math";
 
 export interface POIOverlayOptions {
   renderOrder?: number;
@@ -28,6 +33,7 @@ interface POIMarkerData {
   texture: THREE.CanvasTexture;
   stemMesh: THREE.Line;
   anchorMesh: THREE.Mesh;
+  highlightRingMesh: THREE.Mesh;
   zoneMesh?: THREE.Line;
   isWarning: boolean;
 }
@@ -35,6 +41,7 @@ interface POIMarkerData {
 export class POIOverlay {
   readonly group: THREE.Group;
   private readonly markers = new Map<string, POIMarkerData>();
+  private _allPOIs: POI[] = [];
   private _labelsVisible = true;
   private _authoringActive = false;
   private _selectedPOIId: string | null = null;
@@ -44,6 +51,10 @@ export class POIOverlay {
   private _pulseDurationMs = 2000;
   private readonly _pulseRingMesh: THREE.Mesh;
   private readonly _pulseRingMaterial: THREE.MeshBasicMaterial;
+
+  private readonly _highlightRingGeometry: THREE.RingGeometry;
+  private readonly _ringMaterialMatch: THREE.MeshBasicMaterial;
+  private readonly _ringMaterialSelected: THREE.MeshBasicMaterial;
 
   private readonly renderOrder: number;
   private readonly defaultPinHeightM: number;
@@ -97,18 +108,36 @@ export class POIOverlay {
       depthTest: false,
     });
 
+    // Pre-allocated floor ring materials
+    this._highlightRingGeometry = new THREE.RingGeometry(0.20, 0.32, 32);
+    this._highlightRingGeometry.rotateX(-Math.PI / 2);
+    this._ringMaterialMatch = new THREE.MeshBasicMaterial({
+      color: 0x1d4ed8, // dark blue core for same-category matches
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    });
+    this._ringMaterialSelected = new THREE.MeshBasicMaterial({
+      color: 0x22c55e, // green core for currently selected POI
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.95,
+      depthTest: false,
+    });
+
     // Pulsing selection ring on 3D pin (pre-allocated, zero-allocation animation)
     const ringGeo = new THREE.RingGeometry(0.08, 0.12, 32);
     ringGeo.rotateX(-Math.PI / 2);
     this._pulseRingMaterial = new THREE.MeshBasicMaterial({
-      color: 0x00e5ff,
+      color: 0x22c55e,
       side: THREE.DoubleSide,
       transparent: true,
       opacity: 0,
       depthTest: false,
     });
     this._pulseRingMesh = new THREE.Mesh(ringGeo, this._pulseRingMaterial);
-    this._pulseRingMesh.renderOrder = this.renderOrder + 10;
+    this._pulseRingMesh.renderOrder = this.renderOrder + 25;
     this._pulseRingMesh.visible = false;
     this.group.add(this._pulseRingMesh);
   }
@@ -132,10 +161,7 @@ export class POIOverlay {
 
   setSelectedPOI(poiId: string | null): void {
     this._selectedPOIId = poiId;
-    // Re-render textures of affected markers to reflect selection glow
-    for (const marker of this.markers.values()) {
-      this.updateMarkerTexture(marker);
-    }
+    this.refreshAllMarkerTextures();
   }
 
   pulsePOI(poiId: string, durationMs = 2000): void {
@@ -145,13 +171,28 @@ export class POIOverlay {
   }
 
   setCategoryFilter(category: string | null): void {
-    this._categoryFilter = category ? category.toLowerCase().trim() : null;
+    const norm = normalizeCategory(category);
+    this._categoryFilter = norm || null;
+    this.refreshAllMarkerTextures();
+  }
+
+  private refreshAllMarkerTextures(): void {
+    const effectiveCategory = getEffectiveCategory(
+      this._categoryFilter,
+      this._selectedPOIId,
+      this._allPOIs
+    );
+    for (const marker of this.markers.values()) {
+      const state = getPOIHighlightState(marker.poi, this._selectedPOIId, effectiveCategory);
+      this.updateMarkerTexture(marker, state);
+    }
   }
 
   /**
    * Replaces all current POI markers with a new set of POIs.
    */
   setPOIs(pois: POI[]): void {
+    this._allPOIs = pois.slice();
     this.clear();
     for (const p of pois) {
       this.addOrUpdatePOI(p);
@@ -167,15 +208,29 @@ export class POIOverlay {
       this.removePOI(poi.id);
     }
 
+    if (!this._allPOIs.some((p) => p.id === poi.id)) {
+      this._allPOIs.push(poi);
+    } else {
+      const idx = this._allPOIs.findIndex((p) => p.id === poi.id);
+      this._allPOIs[idx] = poi;
+    }
+
     const pinY = poi.height ?? this.defaultPinHeightM;
     const snapDist = Math.hypot(poi.anchor.x - poi.position.x, poi.anchor.z - poi.position.z);
     const isWarning = Boolean(poi.unreachable || snapDist > 1.0);
+
+    const effectiveCategory = getEffectiveCategory(
+      this._categoryFilter,
+      this._selectedPOIId,
+      this._allPOIs
+    );
+    const state = getPOIHighlightState(poi, this._selectedPOIId, effectiveCategory);
 
     // 1. Create canvas texture for billboard
     const canvas = document.createElement("canvas");
     canvas.width = 512;
     canvas.height = 140;
-    this.renderLabelCanvas(canvas, poi, isWarning, poi.id === this._selectedPOIId);
+    this.renderLabelCanvas(canvas, poi, isWarning, state);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.minFilter = THREE.LinearFilter;
@@ -278,6 +333,16 @@ export class POIOverlay {
       }
     }
 
+    // 6. Highlight ring for category filter matching pins or selected pin
+    const highlightRingMesh = new THREE.Mesh(
+      this._highlightRingGeometry,
+      state === "selected" ? this._ringMaterialSelected : this._ringMaterialMatch
+    );
+    highlightRingMesh.position.set(poi.position.x, 0.02, poi.position.z);
+    highlightRingMesh.renderOrder = this.renderOrder + 5;
+    highlightRingMesh.visible = state === "selected" || state === "match";
+    this.group.add(highlightRingMesh);
+
     this.markers.set(poi.id, {
       poi,
       sprite,
@@ -285,6 +350,7 @@ export class POIOverlay {
       texture,
       stemMesh,
       anchorMesh,
+      highlightRingMesh,
       zoneMesh,
       isWarning,
     });
@@ -302,6 +368,7 @@ export class POIOverlay {
     marker.stemMesh.geometry.dispose();
 
     this.group.remove(marker.anchorMesh);
+    this.group.remove(marker.highlightRingMesh);
 
     if (marker.zoneMesh) {
       this.group.remove(marker.zoneMesh);
@@ -322,10 +389,10 @@ export class POIOverlay {
   /**
    * Re-draws a marker's label canvas texture.
    */
-  private updateMarkerTexture(marker: POIMarkerData): void {
+  private updateMarkerTexture(marker: POIMarkerData, state: POIHighlightState): void {
     const canvas = marker.texture.image as HTMLCanvasElement;
     if (canvas) {
-      this.renderLabelCanvas(canvas, marker.poi, marker.isWarning, marker.poi.id === this._selectedPOIId);
+      this.renderLabelCanvas(canvas, marker.poi, marker.isWarning, state);
       marker.texture.needsUpdate = true;
     }
   }
@@ -337,7 +404,7 @@ export class POIOverlay {
     canvas: HTMLCanvasElement,
     poi: POI,
     isWarning: boolean,
-    isSelected: boolean
+    state: POIHighlightState
   ): void {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -351,27 +418,48 @@ export class POIOverlay {
     const pillY = 10;
     const radius = 24;
 
-    const themeColor = isWarning
-      ? "#ef4444"
-      : isSelected
-      ? "#38ef7d"
-      : "#00e5ff";
+    const isSelected = state === "selected";
+    const isMatch = state === "match";
+
+    let themeColor = "#00e5ff"; // default cyan
+    let glowColor = "rgba(0, 0, 0, 0.75)";
+    let glowBlur = 10;
+    let strokeWidth = 2.0;
+    let bgColor = "rgba(11, 15, 25, 0.92)";
+
+    if (isWarning) {
+      themeColor = "#ef4444";
+      glowColor = "rgba(239, 68, 68, 0.6)";
+      glowBlur = 16;
+    } else if (isSelected) {
+      themeColor = "#22c55e"; // GREEN
+      glowColor = "rgba(34, 197, 94, 0.9)";
+      glowBlur = 24;
+      strokeWidth = 4.0;
+      bgColor = "rgba(11, 28, 18, 0.96)";
+    } else if (isMatch) {
+      themeColor = "#60a5fa"; // blue-tinted label border with bright blue halo
+      glowColor = "rgba(96, 165, 250, 0.9)";
+      glowBlur = 24;
+      strokeWidth = 4.0;
+      bgColor = "rgba(15, 23, 42, 0.96)";
+    }
 
     // 1. Shadow glow
-    ctx.shadowColor = isSelected ? "rgba(56, 239, 125, 0.6)" : "rgba(0, 0, 0, 0.75)";
-    ctx.shadowBlur = isSelected ? 18 : 10;
+    ctx.shadowColor = glowColor;
+    ctx.shadowBlur = glowBlur;
     ctx.shadowOffsetX = 0;
     ctx.shadowOffsetY = 4;
 
     // 2. Rounded badge container
     ctx.beginPath();
     ctx.roundRect(padX, pillY, w - padX * 2, pillH, radius);
-    ctx.fillStyle = "rgba(11, 15, 25, 0.92)";
+    ctx.fillStyle = bgColor;
     ctx.fill();
 
     // 3. Border stroke
     ctx.shadowColor = "transparent";
-    ctx.lineWidth = isSelected ? 3.5 : 2.0;
+    ctx.lineWidth = strokeWidth;
     ctx.strokeStyle = themeColor;
     ctx.stroke();
 
@@ -381,7 +469,7 @@ export class POIOverlay {
     ctx.lineTo(w / 2, pillY + pillH + 16);
     ctx.lineTo(w / 2 + 14, pillY + pillH);
     ctx.closePath();
-    ctx.fillStyle = "rgba(11, 15, 25, 0.92)";
+    ctx.fillStyle = bgColor;
     ctx.fill();
     ctx.strokeStyle = themeColor;
     ctx.lineWidth = 2.0;
@@ -391,9 +479,14 @@ export class POIOverlay {
     const dotX = padX + 32;
     const dotY = pillY + pillH / 2;
     ctx.beginPath();
-    ctx.arc(dotX, dotY, 9, 0, Math.PI * 2);
-    ctx.fillStyle = themeColor;
+    ctx.arc(dotX, dotY, isSelected || isMatch ? 11 : 9, 0, Math.PI * 2);
+    ctx.fillStyle = isSelected ? "#22c55e" : isMatch ? "#1d4ed8" : themeColor;
     ctx.fill();
+    if (isMatch) {
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+    }
 
     // 6. Name label (bold white)
     ctx.fillStyle = "#ffffff";
@@ -411,7 +504,7 @@ export class POIOverlay {
     ctx.fillText(displayName, dotX + 22, dotY - 14);
 
     // 7. Category subtitle
-    ctx.fillStyle = isWarning ? "#fca5a5" : "#94a3b8";
+    ctx.fillStyle = isWarning ? "#fca5a5" : isMatch ? "#93c5fd" : isSelected ? "#86efac" : "#94a3b8";
     ctx.font = "600 20px system-ui, -apple-system, sans-serif";
     const subText = isWarning
       ? (poi.unreachable ? "UNREACHABLE ANCHOR" : "ANCHOR > 1m")
@@ -432,6 +525,12 @@ export class POIOverlay {
     const tanFovHalf = Math.tan(fovRad * 0.5);
     const aspect = 512 / 140; // Canvas aspect ratio
 
+    const effectiveCategory = getEffectiveCategory(
+      this._categoryFilter,
+      this._selectedPOIId,
+      this._allPOIs
+    );
+
     for (const marker of this.markers.values()) {
       const pos = marker.sprite.position;
       const dx = pos.x - POIOverlay._camPos.x;
@@ -439,25 +538,39 @@ export class POIOverlay {
       const dz = pos.z - POIOverlay._camPos.z;
       const dist = Math.hypot(dx, dy, dz);
 
-      // In authoring mode, keep pins fully visible so user can position them
-      let alpha = 1.0;
-      if (!this._authoringActive) {
-        if (!this._labelsVisible) {
-          alpha = 0.0;
-        } else if (dist <= this.fadeStartM) {
-          alpha = 1.0;
-        } else if (dist >= this.fadeEndM) {
-          alpha = 0.0;
-        } else {
-          alpha = (this.fadeEndM - dist) / (this.fadeEndM - this.fadeStartM);
-        }
-      }
+      const state = getPOIHighlightState(marker.poi, this._selectedPOIId, effectiveCategory);
 
-      // Dim non-matching POIs when a category filter is active
-      if (this._categoryFilter && alpha > 0.01) {
-        const isMatch = marker.poi.category.toLowerCase().trim() === this._categoryFilter;
-        if (!isMatch) {
-          alpha *= 0.25;
+      let alpha = 1.0;
+      if (state === "selected") {
+        alpha = 1.0;
+        marker.sprite.renderOrder = this.renderOrder + 20;
+        marker.highlightRingMesh.material = this._ringMaterialSelected;
+        marker.highlightRingMesh.visible = true;
+        marker.highlightRingMesh.renderOrder = this.renderOrder + 6;
+      } else if (state === "match") {
+        alpha = 1.0;
+        marker.sprite.renderOrder = this.renderOrder + 10;
+        marker.highlightRingMesh.material = this._ringMaterialMatch;
+        marker.highlightRingMesh.visible = true;
+        marker.highlightRingMesh.renderOrder = this.renderOrder + 5;
+      } else if (state === "dimmed") {
+        alpha = 0.30;
+        marker.sprite.renderOrder = this.renderOrder - 1;
+        marker.highlightRingMesh.visible = false;
+      } else {
+        // normal state
+        marker.sprite.renderOrder = this.renderOrder;
+        marker.highlightRingMesh.visible = false;
+        if (!this._authoringActive) {
+          if (!this._labelsVisible) {
+            alpha = 0.0;
+          } else if (dist <= this.fadeStartM) {
+            alpha = 1.0;
+          } else if (dist >= this.fadeEndM) {
+            alpha = 0.0;
+          } else {
+            alpha = (this.fadeEndM - dist) / (this.fadeEndM - this.fadeStartM);
+          }
         }
       }
 

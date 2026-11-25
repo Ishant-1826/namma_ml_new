@@ -3,20 +3,6 @@
   "version": 1,
   "pois": [
     {
-      "id": "poi_mwtputfk",
-      "name": "study table",
-      "category": "table",
-      "aliases": [
-        "table to study"
-      ],
-      "tags": [],
-      "position": {
-        "x": -0.11020154533256271,
-        "z": 2.0395625058104923
-      },
-      "height": 1.2
-    },
-    {
       "id": "poi_mwtpxghg",
       "name": "black table",
       "category": "table",
@@ -47,7 +33,7 @@
     {
       "id": "poi_mwtpz80a",
       "name": "Last bench",
-      "category": "chair",
+      "category": "bench",
       "aliases": [
         "honeycomb chair"
       ],
@@ -61,7 +47,7 @@
     {
       "id": "poi_mww27wpo",
       "name": "bench",
-      "category": "desk",
+      "category": "bench",
       "aliases": [
         "student bench"
       ],
@@ -75,9 +61,9 @@
     {
       "id": "poi_mww28tus",
       "name": "stage",
-      "category": "desk",
+      "category": "stage",
       "aliases": [
-        "teacher's stage"
+        "podium"
       ],
       "tags": [],
       "position": {
@@ -89,7 +75,7 @@
     {
       "id": "poi_mww29gbo",
       "name": "door",
-      "category": "desk",
+      "category": "door",
       "aliases": [
         "entrance"
       ],
@@ -103,7 +89,7 @@
     {
       "id": "poi_mww2ab9k",
       "name": "window",
-      "category": "desk",
+      "category": "window",
       "aliases": [
         "scenery window"
       ],
@@ -111,6 +97,34 @@
       "position": {
         "x": 1.1516171900097087,
         "z": -4.120994227468296
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mww6n1ue",
+      "name": "Last row middle bench",
+      "category": "bench",
+      "aliases": [
+        "bench"
+      ],
+      "tags": [],
+      "position": {
+        "x": -2.6930006653869714,
+        "z": 0.9634424050917489
+      },
+      "height": 1.2
+    },
+    {
+      "id": "poi_mww6p9yg",
+      "name": "study table",
+      "category": "table",
+      "aliases": [
+        "table"
+      ],
+      "tags": [],
+      "position": {
+        "x": 2.8906037386777026,
+        "z": 2.3955652006099095
       },
       "height": 1.2
     }

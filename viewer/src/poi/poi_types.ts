@@ -77,3 +77,11 @@ export interface POISceneFile {
   version: 1;
   pois: RawPOI[];
 }
+
+/**
+ * Normalizes a category string by trimming whitespace and converting to lowercase.
+ */
+export function normalizeCategory(category?: string | null): string {
+  return typeof category === "string" ? category.trim().toLowerCase() : "";
+}
+

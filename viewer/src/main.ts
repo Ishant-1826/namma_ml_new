@@ -627,13 +627,15 @@ function initGraphics() {
     } else if (e.code === "Escape") {
       if (searchBar.isOpen()) {
         searchBar.close(true);
-        return;
       }
       if (poiCard.isOpen()) {
         poiCard.hide();
-        poiOverlay.setSelectedPOI(null);
-        minimap.setSelectedPOI(null);
       }
+      searchBar.clearCategory();
+      poiOverlay.setSelectedPOI(null);
+      minimap.setSelectedPOI(null);
+      poiOverlay.setCategoryFilter(null);
+      minimap.setCategoryFilter(null);
     } else if (e.code === "F3" || e.key === "F3") {
       e.preventDefault();
       statsPanelVisible = !statsPanelVisible;

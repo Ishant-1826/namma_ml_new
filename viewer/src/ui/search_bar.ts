@@ -5,7 +5,7 @@
  * action buttons ("Jump here", "Navigate"), and toast notifications.
  */
 
-import { POI } from "../poi/poi_types";
+import { POI, normalizeCategory } from "../poi/poi_types";
 import { NavGrid } from "../nav/navgrid";
 import { searchPOIs, SearchResult } from "../poi/search";
 import {
@@ -149,15 +149,25 @@ export class SearchBar {
    * Sets the active category filter (or clears it) and updates display.
    */
   setCategory(category: string | null, playerPos?: { x: number; z: number }): void {
-    if (this._activeCategory === category) {
+    const norm = normalizeCategory(category);
+    if (this._activeCategory === norm) {
       this._activeCategory = null;
     } else {
-      this._activeCategory = category;
+      this._activeCategory = norm || null;
     }
 
     this.renderCategoryChips();
     this._callbacks.onCategoryFilter?.(this._activeCategory);
     this.updateQueryResults(playerPos);
+  }
+
+  /**
+   * Clears any active category filter.
+   */
+  clearCategory(): void {
+    this._activeCategory = null;
+    this.renderCategoryChips();
+    this._callbacks.onCategoryFilter?.(null);
   }
 
   /**
@@ -185,11 +195,12 @@ export class SearchBar {
     if (this._categories.length === 0) return;
 
     for (const cat of this._categories) {
+      const normCat = normalizeCategory(cat);
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = `category-chip ${this._activeCategory === cat ? "active" : ""}`;
+      btn.className = `category-chip ${this._activeCategory === normCat ? "active" : ""}`;
       btn.textContent = cat;
-      btn.dataset.category = cat;
+      btn.dataset.category = normCat;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         this.setCategory(cat);

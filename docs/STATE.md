@@ -794,6 +794,16 @@ cd viewer && npm run dev
       - Total Vitest tests: **97 / 97 PASSED** across 5 test suites.
       - TypeScript compiler: clean (0 errors via `npx tsc --noEmit`).
       - Production build: `npm run build` PASSED (2.03 s).
+  - **Phase 4 Follow-up: Category Highlighting & Dual-State Visuals** -- COMPLETE (2026-11-25):
+    - **Category Normalization**: Implemented `normalizeCategory` in `viewer/src/poi/poi_types.ts` (trims whitespace, converts to lowercase) and unified usage across `loader.ts`, `jump_math.ts`, `search_bar.ts`, `poi_overlay.ts`, and `minimap.ts`.
+    - **Single Source of Truth**: Unified category state via `getEffectiveCategory(activeChipCategory, selectedPOIId, allPOIs)`. Selecting any POI (from search, click, or minimap) automatically highlights its category group in blue without needing an active chip. Esc or clearing selection restores default state.
+    - **Visual Styling (Minimap & 3D)**:
+      - **Same-category matches**: Dark blue marker core (`#1d4ed8`), bright blue outer glow (`#60a5fa` halo, `shadowBlur: 14`), 1 px thin white rim, radius 8.5 px on minimap. In 3D: pre-allocated dark blue floor ring (`0x1d4ed8`), blue-tinted label border (`#60a5fa`), full opacity (`alpha = 1.0`), distance fading bypassed.
+      - **Currently selected POI**: Green core (`#22c55e`), bright green glow (`#4ade80`, `shadowBlur: 14`), 1 px white rim, radius 8.5 px on minimap. In 3D: pre-allocated green floor ring (`0x22c55e`), green-tinted label border (`#22c55e`), full opacity (`alpha = 1.0`). Selected green strictly wins over blue.
+      - **Non-matching POIs**: Dimmed to 30% opacity (`alpha = 0.30`).
+    - **Layered Draw Order**: Minimap draws dimmed/normal POIs first, matching blue POIs second, and selected green POI last on top of everything. In 3D, sprites and floor rings use staged `renderOrder` so highlights are never occluded.
+    - **Pure-Logic Tests**: Added 4 unit tests verifying `getPOIHighlightState` and `getEffectiveCategory` across selected, match, dimmed, and normal states with case/whitespace insensitivity.
+    - **Verification**: **102 / 102 Vitest tests PASSED**; `tsc --noEmit` clean; production build PASSED (1.95 s); 144 FPS / 6.9 ms verified live via browser subagent.
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics
