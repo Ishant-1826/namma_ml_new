@@ -20,7 +20,14 @@ import {
   PathProjection,
 } from "../src/nav/instructions";
 import { POI } from "../src/poi/poi_types";
-import { NavGridPoint } from "../src/nav/navgrid";
+import { NavGrid, NavGridPoint } from "../src/nav/navgrid";
+import { findPath } from "../src/nav/pathfinder";
+import { loadPOIs } from "../src/poi/loader";
+import { isCircleBlocked } from "../src/collision";
+import { NavigationController } from "../src/ui/navigation_controller";
+import * as THREE from "three";
+import * as fs from "fs";
+import * as path from "path";
 
 const mockPOI: POI = {
   id: "poi_test_1",
@@ -545,6 +552,110 @@ describe("Phase 5 Navigation Guidance Pure Logic", () => {
           expect(inst.text).toBe(`Arrive at ${targetName}`);
         }
       }
+    });
+  });
+
+  describe("6. Auto-Walk Stability & Interruption Protection", () => {
+    it("auto-walk cancellation respects the 350ms user input grace period", () => {
+      const cam = new THREE.PerspectiveCamera();
+      cam.position.set(0, 1.45, 0);
+
+      const navCtrl = new NavigationController({
+        navGrid: () => null,
+        occupancy: () => null,
+        camera: cam,
+        controls: {
+          teleportTo: () => {},
+          currentYawRad: 0,
+          currentYawDeg: 0,
+        },
+        minimap: { setRoute: () => {}, setDebugOverlay: () => {} },
+        routeRenderer: { setRoute: () => {}, updateProgress: () => {}, clear: () => {} },
+        guidanceHUD: {
+          show: () => {},
+          hide: () => {},
+          update: () => {},
+          showArrival: () => {},
+          showRerouting: () => {},
+          hideArrivalBanner: () => {},
+        },
+        showToast: () => {},
+      });
+
+      // Manually set navigating state
+      (navCtrl as any)._state = {
+        ...createInitialRouteState(),
+        status: "navigating",
+        targetPOI: mockPOI,
+        path: [{ x: 0, z: 0 }, { x: 5, z: 0 }],
+        totalLengthM: 5.0,
+      };
+
+      navCtrl.toggleAutoWalk();
+      expect(navCtrl.isAutoWalking()).toBe(true);
+
+      // User input cancellation within grace period (< 350ms) is ignored
+      navCtrl.cancelAutoWalk("user input");
+      expect(navCtrl.isAutoWalking()).toBe(true);
+
+      // Explicit reasons (e.g. toggled off, obstacle, reached destination) cancel immediately
+      navCtrl.cancelAutoWalk("toggled off");
+      expect(navCtrl.isAutoWalking()).toBe(false);
+    });
+
+    it("simulates full auto-walk on 'Last row middle bench' -> 'Last bench' without collision stop", () => {
+      const occData = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, "../public/scene/occupancy.json"), "utf8")
+      );
+      const rawPoiData = JSON.parse(
+        fs.readFileSync(path.resolve(__dirname, "../public/scene/poi.json"), "utf8")
+      );
+      const grid = new NavGrid(occData, [1.771, 3.523]);
+      const { pois } = loadPOIs(rawPoiData, grid);
+
+      const p1 = pois.find((p: POI) => p.name === "Last row middle bench")!;
+      const p2 = pois.find((p: POI) => p.name === "Last bench")!;
+      expect(p1).toBeDefined();
+      expect(p2).toBeDefined();
+
+      const res = findPath(grid, p1.anchor, p2.anchor);
+      expect("points" in res).toBe(true);
+      const pathPts = (res as any).points;
+      const totalLen = (res as any).lengthM;
+
+      // Simulate stepAutoWalk progression
+      let distAlong = 0;
+      const dt = 0.016;
+      let blocked = false;
+
+      while (distAlong < totalLen - 0.05) {
+        distAlong += 1.4 * dt;
+        let targetX = pathPts[pathPts.length - 1].x;
+        let targetZ = pathPts[pathPts.length - 1].z;
+        let accum = 0;
+        for (let i = 0; i < pathPts.length - 1; i++) {
+          const pt1 = pathPts[i];
+          const pt2 = pathPts[i + 1];
+          const segLen = Math.hypot(pt2.x - pt1.x, pt2.z - pt1.z);
+          if (accum + segLen >= distAlong) {
+            const segDist = distAlong - accum;
+            const t = segLen > 1e-6 ? segDist / segLen : 0;
+            targetX = pt1.x + t * (pt2.x - pt1.x);
+            targetZ = pt1.z + t * (pt2.z - pt1.z);
+            break;
+          }
+          accum += segLen;
+        }
+
+        // Must not be blocked with 0.07m collision tolerance
+        if (isCircleBlocked(occData, targetX, targetZ, 0.07, false, true)) {
+          blocked = true;
+          break;
+        }
+      }
+
+      expect(blocked).toBe(false);
+      expect(distAlong).toBeGreaterThanOrEqual(totalLen - 0.05);
     });
   });
 });

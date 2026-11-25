@@ -911,6 +911,9 @@ cd viewer && npm run dev
 
 ## Known Issues / Diagnostics
 
+- **Auto-Walk (Key G) Stability**: Fully resolved. Fixed two root causes of early auto-walk interruption (~0.1 m):
+  1. *Collision Tolerance Discretization*: 5 cm waypoint sampling along line segments can have up to ~4 mm interpolation sagitta at grid cell corners (~0.076 m clearance vs 0.08 m radius). Relaxed `stepAutoWalk` collision check radius to 0.07 m (covering the 4 mm discretization error without altering physical collision). 100% of 72 POI pairs now auto-walk to completion with 0 false obstacle stops.
+  2. *Hypersensitive Activity Cancellation*: `controls.onUserActivity` was previously firing on 1-pixel mouse sensor jitter and non-movement keys (including OS `KeyG` repeat). Restricted `onUserActivity` to intentional movement keys (`WASD`, arrow keys) and mouse movement `> 10px`, and added a 350 ms activation grace period to absorb the initiating keypress/click. Verified live in-browser with continuous 6.0+ m traversal.
 - **Camera Walkability**: Fully resolved in v3.1 (100.00% camera walkability, 0.00% path blocked steps).
 - **SfM Extension Quality**: Monolithic extension of new video sweeps was rejected in Stage B due to high reprojection error in the new sweeps (1.31-1.89 px). Production scene remains high-fidelity `home` reconstruction (PSNR 23.90 dB, SSIM 0.8891). The new sweep videos have significant motion blur and rotation-only segments that degrade global bundle adjustment.
 

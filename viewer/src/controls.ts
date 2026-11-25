@@ -297,7 +297,8 @@ export class FirstPersonControls {
       const movementX = e.movementX || 0;
       const movementY = e.movementY || 0;
 
-      if (Math.abs(movementX) > 0 || Math.abs(movementY) > 0) {
+      // Only trigger user activity on intentional mouse movement (> 10px), ignoring micro-sensor jitter
+      if (Math.hypot(movementX, movementY) > 10) {
         this.onUserActivity?.();
       }
 
@@ -318,23 +319,25 @@ export class FirstPersonControls {
         return;
       }
 
-      this.onUserActivity?.();
-
       switch (e.code) {
         case "KeyW":
         case "ArrowUp":
+          this.onUserActivity?.();
           this._keys.forward = true;
           break;
         case "KeyS":
         case "ArrowDown":
+          this.onUserActivity?.();
           this._keys.backward = true;
           break;
         case "KeyA":
         case "ArrowLeft":
+          this.onUserActivity?.();
           this._keys.left = true;
           break;
         case "KeyD":
         case "ArrowRight":
+          this.onUserActivity?.();
           this._keys.right = true;
           break;
         case "ShiftLeft":
@@ -342,6 +345,7 @@ export class FirstPersonControls {
           this._keys.sprint = true;
           break;
         case "KeyR":
+          this.onUserActivity?.();
           this.reset();
           break;
         case "KeyH":
@@ -459,6 +463,10 @@ export class FirstPersonControls {
         const deltaY = e.clientY - this._lastLookY;
         this._lastLookX = e.clientX;
         this._lastLookY = e.clientY;
+
+        if (Math.hypot(deltaX, deltaY) > 10) {
+          this.onUserActivity?.();
+        }
 
         this._euler.y -= deltaX * this.touchLookSensitivity;
         this._euler.x -= deltaY * this.touchLookSensitivity;

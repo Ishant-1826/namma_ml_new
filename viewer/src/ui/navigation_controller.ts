@@ -73,6 +73,7 @@ export class NavigationController {
   };
 
   private _autoWalkDistAlongM = 0;
+  private _autoWalkStartTimeMs = 0;
   private _lastSegIdx = 0;
   private _lastDebugLogTimeMs = 0;
   private _precomputedTurns: TurnEvent[] = [];
@@ -236,6 +237,7 @@ export class NavigationController {
         this._projTemp
       );
       this._autoWalkDistAlongM = this._projTemp.distanceAlongPathM;
+      this._autoWalkStartTimeMs = performance.now();
       this._state = setAutoWalkState(this._state, true);
       this.config.showToast("Auto-walking along route (Key G to stop)");
     } else {
@@ -250,6 +252,12 @@ export class NavigationController {
    */
   cancelAutoWalk(reason = "input"): void {
     if (!this._state.autoWalkActive) return;
+
+    // Grace period for user input: ignore user input cancellation within 350ms of activation
+    // to prevent the initiating keydown/keyup or mouse click from immediately cancelling auto-walk
+    if (reason === "user input" && performance.now() - this._autoWalkStartTimeMs < 350) {
+      return;
+    }
 
     this._state = setAutoWalkState(this._state, false);
     const cam = this.config.camera;
@@ -432,6 +440,7 @@ export class NavigationController {
     this._lastSegIdx = 0;
     this._guidanceTracker.activeTurnIndex = 0;
     this._precomputedTurns = extractTurnEvents(s.points);
+    this._autoWalkDistAlongM = 0;
 
     this.config.routeRenderer.setRoute(s.points, targetPOI.anchor);
     this.config.minimap.setRoute(s.points, targetPOI.anchor);
@@ -499,8 +508,12 @@ export class NavigationController {
     }
 
     // Collision Check: Must not enter blocked cells
+    // Player radius is 0.08 m. Discretization error along 0.05m sampled segments
+    // can penetrate up to 0.08 - sqrt(0.08^2 - 0.025^2) = 0.004 m near grid cell corners.
+    // Using 0.07 m collision radius prevents false-positive halts on valid smoothed paths
+    // while strictly preventing entry into actual obstacle cells.
     const occ = this.config.occupancy();
-    if (occ && isCircleBlocked(occ, targetX, targetZ, 0.08, false, true)) {
+    if (occ && isCircleBlocked(occ, targetX, targetZ, 0.07, false, true)) {
       console.warn(`[Navigation] Auto-walk blocked by collision at (${targetX.toFixed(2)}, ${targetZ.toFixed(2)})`);
       this.cancelAutoWalk("blocked by obstacle");
       this.config.showToast("Auto-walk stopped: obstacle ahead");
