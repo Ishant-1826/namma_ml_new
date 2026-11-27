@@ -198,3 +198,66 @@ Date: _______________  Scene Name: ___________________  Operator: ______________
     [ ] Result: [ ] PASS   [ ] WARN (acceptable)   [ ] FAIL (re-record required)
 ================================================================================
 ```
+
+---
+
+## 7. POI Annotation SOP (Venue Tagging Protocol)
+
+This operational procedure outlines the steps required to tag, categorize, and deploy Points of Interest (POIs) across a reconstructed venue.
+
+### 7.1 Field Annotation Workflow
+
+1. **Launch the Reconstructed Viewer**:
+   * Open the local viewer (`npm run dev`) or deployed stage instance.
+   * Allow the 3D Gaussian splat model and occupancy grid to initialize.
+
+2. **Walk to the Target Landmark**:
+   * Use first-person roaming controls (`WASD` + Mouse) to walk through the space to the physical feature you wish to tag (e.g. entrance doors, conference tables, presentation stages, window seating, emergency exits).
+
+3. **Activate In-Viewer Authoring Mode**:
+   * Press **`P`** on the keyboard.
+   * A persistent `"EDIT POIs"` badge will illuminate and an authoring toolbar will appear at the top of the screen.
+
+4. **Place Landmark Pin**:
+   * **In 3D View**: Click directly on the floor splat at the desired location.
+   * **On 2D Minimap**: Alternatively, press **`B`** to open the minimap floor plan and click directly on the 2D layout.
+   * An authoring pin will drop at the selected coordinates. The system automatically computes the nearest walkable anchor cell using `snapToWalkable()` to guarantee valid pathfinding.
+
+5. **Configure POI Metadata**:
+   * In the authoring dialog, enter:
+     * **Name**: Clear landmark name (e.g., `Main Corridor Entrance`, `South Conference Table`).
+     * **Category**: Select standard taxonomy (`door`, `bench`, `table`, `window`, `stage`, `tape`, or `general`).
+     * **Aliases**: Common alternative search phrases or abbreviations (e.g., `["entrance", "exit", "doorway"]`).
+     * **Description**: Optional room details or directions (e.g., `North entryway leading to main auditorium`).
+
+6. **Review and Repeat**:
+   * Repeat steps 2 through 5 for all key architectural landmarks, ensuring POIs are distributed across all major zones of the venue.
+
+### 7.2 Dataset Export & Validation Gate
+
+1. **Export the Dataset**:
+   * In the authoring toolbar, click **⬇️ Export poi.json**.
+   * Move the downloaded file to overwrite:
+     ```text
+     viewer/public/scene/poi.json
+     ```
+
+2. **Run the Automated Validation Tool**:
+   * Execute the standalone validation gate from the repository root:
+     ```bash
+     npx tsx scripts/validate_pois.ts
+     ```
+   * The tool performs rigorous geometric checks against `occupancy.json`:
+     * **Grid Bounds**: Verifies all coordinates lie within the physical boundaries of the space.
+     * **Anchor Walkability**: Confirms each snapped anchor is on a verified walkable cell.
+     * **Clearance Requirements**: Verifies anchor clearance $\ge 0.20\text{ m}$ and human radius collision-free check ($r=0.08\text{ m}$).
+     * **Path Reachability**: Executes an A* pathfinding query from the camera spawn point to every POI anchor, ensuring 100% reachability.
+     * **Pairwise Matrix**: Verifies non-zero path lengths and venue span coverage.
+
+3. **Commit & Deploy**:
+   * Once `validate_pois.ts` prints `[PASS] All POIs are valid, well-anchored, and reachable from spawn`:
+     ```bash
+     git add viewer/public/scene/poi.json
+     git commit -m "feat(poi): update venue POI annotations"
+     ```
+

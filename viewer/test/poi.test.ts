@@ -8,7 +8,7 @@ import { describe, it, expect } from "vitest";
 import { OccupancyGrid } from "../src/collision";
 import { NavGrid } from "../src/nav/navgrid";
 import { POI, RawPOI } from "../src/poi/poi_types";
-import { loadPOIs } from "../src/poi/loader";
+import { loadPOIs, resolvePOIDataSource } from "../src/poi/loader";
 import {
   SpatialIndex,
   isPointInCircle,
@@ -551,6 +551,51 @@ describe("Phase 2 POI Data Model, Spatial Index & Search", () => {
       expect(res.warnings.length).toBe(1);
       expect(res.warnings[0]).toContain("anchor moved");
       expect(res.warnings[0]).toContain("> 1 m");
+    });
+  });
+
+  // =========================================================================
+  // 6. POI Data Source Resolution (Server vs Draft)
+  // =========================================================================
+  describe("6. POI Data Source Resolution", () => {
+    const serverPOI = { scene: "home", version: 1, pois: [{ id: "p1", name: "Server Desk", position: { x: 1, z: 1 } }] };
+    const draftPOI = { scene: "home", version: 1, pois: [{ id: "p1", name: "Draft Desk Edited", position: { x: 2, z: 2 } }] };
+
+    it("server poi.json wins over localStorage draft in normal viewing", () => {
+      const res = resolvePOIDataSource(serverPOI, draftPOI, false);
+      expect(res.source).toBe("server");
+      expect(res.data).toBe(serverPOI);
+    });
+
+    it("localStorage draft is used as fallback when server data is null", () => {
+      const res = resolvePOIDataSource(null, draftPOI, false);
+      expect(res.source).toBe("draft");
+      expect(res.data).toBe(draftPOI);
+    });
+
+    it("localStorage draft is used as fallback when server data has empty POIs", () => {
+      const emptyServer = { scene: "home", version: 1, pois: [] };
+      const res = resolvePOIDataSource(emptyServer, draftPOI, false);
+      expect(res.source).toBe("draft");
+      expect(res.data).toBe(draftPOI);
+    });
+
+    it("localStorage draft is used when authoring mode is active", () => {
+      const res = resolvePOIDataSource(serverPOI, draftPOI, true);
+      expect(res.source).toBe("draft");
+      expect(res.data).toBe(draftPOI);
+    });
+
+    it("server data is used in authoring mode if draft is null", () => {
+      const res = resolvePOIDataSource(serverPOI, null, true);
+      expect(res.source).toBe("server");
+      expect(res.data).toBe(serverPOI);
+    });
+
+    it("returns none when both server and draft are missing", () => {
+      const res = resolvePOIDataSource(null, null, false);
+      expect(res.source).toBe("none");
+      expect(res.data).toBeNull();
     });
   });
 });

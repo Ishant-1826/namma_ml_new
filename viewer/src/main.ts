@@ -5,7 +5,7 @@ import { OccupancyGrid, SceneBounds, isPointInUnknownCell } from "./collision";
 import { Minimap } from "./minimap";
 import { NavGrid } from "./nav/navgrid";
 import { POI } from "./poi/poi_types";
-import { loadPOIs } from "./poi/loader";
+import { loadPOIs, resolvePOIDataSource } from "./poi/loader";
 import { SpatialIndex } from "./poi/spatial_index";
 import { POIOverlay } from "./ui/poi_overlay";
 import { POICard } from "./ui/poi_card";
@@ -850,25 +850,37 @@ async function loadScene() {
   try {
     console.log(`[Viewer] Loading POIs from ${poiJsonUrl}`);
     const poiRes = await fetch(poiJsonUrl);
-    let rawPoiData: unknown = null;
+    let serverPoiData: unknown = null;
     if (poiRes.ok) {
-      rawPoiData = await poiRes.json();
+      try {
+        serverPoiData = await poiRes.json();
+      } catch (jsonErr) {
+        console.warn(`[Viewer] Failed to parse poi.json from ${poiJsonUrl}:`, jsonErr);
+      }
     } else {
       console.warn(`[Viewer] poi.json not found at ${poiJsonUrl} (HTTP ${poiRes.status}). Proceeding without POIs.`);
     }
 
-    // Check localStorage draft first
+    // Read optional localStorage draft
+    let draftData: unknown = null;
     try {
       const draftStr = localStorage.getItem(LOCAL_STORAGE_POI_DRAFT_KEY);
       if (draftStr) {
-        const draft = JSON.parse(draftStr);
-        if (draft && Array.isArray(draft.pois) && draft.pois.length > 0) {
-          console.log(`[Viewer] Using autosaved POI draft from localStorage (${draft.pois.length} POIs)`);
-          rawPoiData = draft;
-        }
+        draftData = JSON.parse(draftStr);
       }
     } catch (err) {
       console.warn("[Viewer] Could not read localStorage POI draft:", err);
+    }
+
+    // Resolution: published poi.json wins in normal viewing.
+    // Drafts are only used during authoring or when poi.json is missing or invalid.
+    const isAuthoring = poiAuthoring ? poiAuthoring.isActive() : false;
+    const { data: rawPoiData, source } = resolvePOIDataSource(serverPoiData, draftData, isAuthoring);
+
+    if (source === "server") {
+      console.log("[Viewer] Loaded official POI definitions from server poi.json");
+    } else if (source === "draft") {
+      console.log("[Viewer] Loaded POI draft from localStorage (fallback or authoring mode)");
     }
 
     if (rawPoiData && navGrid) {

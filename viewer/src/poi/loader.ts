@@ -84,6 +84,54 @@ function parseZone(rawZone: unknown, id: string): { zone?: POIZone; error?: stri
   return { error: `POI [${id}] has malformed zone: unrecognized zone specification` };
 }
 
+export interface POIDataResolution {
+  data: unknown;
+  source: "server" | "draft" | "none";
+}
+
+/**
+ * Resolves which POI dataset should be loaded based on viewer state.
+ * Rule: In normal viewing, server-published poi.json always wins.
+ * Drafts from localStorage are used only when authoring or when poi.json is missing or invalid.
+ */
+export function resolvePOIDataSource(
+  serverData: unknown,
+  draftData: unknown,
+  isAuthoring = false
+): POIDataResolution {
+  const isServerValid = Boolean(
+    serverData &&
+    typeof serverData === "object" &&
+    ((Array.isArray(serverData) && serverData.length > 0) ||
+     ("pois" in serverData && Array.isArray((serverData as Record<string, unknown>).pois) && ((serverData as Record<string, unknown>).pois as unknown[]).length > 0))
+  );
+
+  const isDraftValid = Boolean(
+    draftData &&
+    typeof draftData === "object" &&
+    ((Array.isArray(draftData) && draftData.length > 0) ||
+     ("pois" in draftData && Array.isArray((draftData as Record<string, unknown>).pois) && ((draftData as Record<string, unknown>).pois as unknown[]).length > 0))
+  );
+
+  if (isAuthoring && isDraftValid) {
+    return { data: draftData, source: "draft" };
+  }
+
+  if (isServerValid) {
+    return { data: serverData, source: "server" };
+  }
+
+  if (isDraftValid) {
+    return { data: draftData, source: "draft" };
+  }
+
+  if (serverData) {
+    return { data: serverData, source: "server" };
+  }
+
+  return { data: null, source: "none" };
+}
+
 /**
  * Loads, validates, and anchors POIs against a navigation grid.
  */

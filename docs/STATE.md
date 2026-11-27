@@ -907,6 +907,32 @@ cd viewer && npm run dev
       - Python pytest: **12 / 12 tests PASSED** (test_occupancy, test_align, test_verify_splat).
       - Production build: `npm run build` PASSED (1.49 s).
       - `.gitignore` current; 0 large binaries tracked.
+- [x] **Round 2 Phase 7: Deployment, Documentation & Polish** -- COMPLETE & VERIFIED (2026-11-27):
+  - **Live Deployments**:
+    - **Round 2 (Evaluate this one)**: `https://namma-ml-viewer-r2.parthbhardwaj0906.workers.dev`
+      - Platform: Cloudflare Workers (static assets).
+      - Deployed SPA bundle + 3D Gaussian Splatting assets (`scene.v1.spz` 8.64 MB, `scene.json` 494 B, `occupancy.json` 406 KB, `poi.json` 2.5 KB).
+      - Verified HTTP 200 on all endpoints: `/`, `/scene/poi.json`, `/scene/occupancy.json`, `/scene/scene.json`, `/scene/scene.v1.spz`.
+      - Verified 9 POIs live from remote `/scene/poi.json`.
+    - **Round 1 (Unchanged reference)**: `https://namma-ml-viewer.pages.dev/`
+      - Platform: Cloudflare Pages (free tier).
+      - Preserved unchanged as submitted for Round 1 judging.
+  - **POI Loader Data Source Resolution**:
+    - Implemented `resolvePOIDataSource()` in `viewer/src/poi/loader.ts`.
+    - Guarantees server-published `poi.json` always wins in normal viewing; local drafts are used only during authoring or as fallback if `poi.json` is missing or invalid.
+    - 6 new unit tests in `viewer/test/poi.test.ts`. Total test count: 140 / 140 passing.
+  - **Edge Cache Headers (`_headers`)**:
+    - Added `/scene/poi.json`: `Cache-Control: public, max-age=60`.
+    - Preserved `/scene/scene.json`: `Cache-Control: public, max-age=60` and `/scene/*.spz`: `Cache-Control: public, max-age=31536000, immutable`.
+  - **Documentation**:
+    - `README.md`: Quick start, testing instructions, POI authoring guide, navigation architecture, full key-binding table, and links to `docs/NAV_EVAL.md` and `docs/ROUND2.md`.
+    - `docs/ROUND2.md`: 3-minute judge quick-test guide, criteria-to-implementation mapping table, and third-party license audit.
+    - `docs/SOP.md`: Added Section 7 "POI Annotation SOP (Venue Tagging Protocol)" covering field tagging, `P` authoring, export, and `scripts/validate_pois.ts` validation gate.
+    - Strict adherence: routes described as "collision-free, near-optimal"; prohibited words avoided.
+  - **Automated Verification**:
+    - Vitest: 140 / 140 tests PASSED across 6 test suites.
+    - TypeScript: `tsc --noEmit` exited 0 with zero errors.
+    - Production build: `npm run build` succeeded; all files in `dist/` strictly under 25 MiB limit (largest asset 8.64 MB).
 - [ ] **Phase 10: Benchmarks** -- Automated benchmarking of frame rates and latency against competition specs.
 
 ## Known Issues / Diagnostics
